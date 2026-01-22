@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  # Go Hooks
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.55.2
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint (market_maker)
+        entry: bash -c 'cd market_maker && golangci-lint run ./...'
+        files: ^market_maker/.*\.go$
+
+  - repo: local
+    hooks:
+      - id: go-mod-tidy
+        name: go mod tidy (market_maker)
+        entry: bash -c 'cd market_maker && go mod tidy'
+        language: system
+        files: ^market_maker/.*\.go$
+        pass_filenames: false
+
+  # Python Hooks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        name: ruff (python_connector)
+        args: [ --fix, --exit-non-zero-on-fix ]
+        files: ^python_connector/
+      - id: ruff-format
+        name: ruff-format (python_connector)
+        files: ^python_connector/

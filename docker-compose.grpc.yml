@@ -1,0 +1,267 @@
+version: '3.8'
+
+# OpenSQT Market Maker - gRPC Architecture Deployment
+# This configuration enforces the documented gRPC-based architecture
+# where both market_maker and live_server connect to exchange_connector via gRPC
+
+services:
+  # Exchange Connector - gRPC Server wrapping native exchange
+  exchange_connector:
+    build:
+      context: ./market_maker
+      dockerfile: Dockerfile.exchange_connector
+    container_name: opensqt-exchange-connector
+    environment:
+      # Exchange selection
+      - EXCHANGE=${EXCHANGE:-binance}
+      
+      # Exchange credentials (from .env file)
+      - API_KEY=${API_KEY}
+      - API_SECRET=${API_SECRET}
+      - PASSPHRASE=${PASSPHRASE:-}  # Required for OKX only
+      
+      # gRPC server configuration
+      - PORT=50051
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Config file override (optional)
+      - CONFIG_FILE=/app/configs/config.yaml
+    ports:
+      - "50051:50051"  # gRPC port (internal only in production)
+    healthcheck:
+      # Use gRPC health check protocol (REQ-GRPC-001.4)
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - opensqt-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Market Maker - Trading Engine (gRPC Client)
+  market_maker:
+    build:
+      context: ./market_maker
+      dockerfile: Dockerfile
+    container_name: opensqt-market-maker
+    depends_on:
+      exchange_connector:
+        condition: service_healthy
+    environment:
+      # Exchange connection via gRPC
+      - CURRENT_EXCHANGE=remote
+      - EXCHANGE_GRPC_ADDRESS=exchange_connector:50051
+      
+      # Trading configuration
+      - SYMBOL=${SYMBOL:-BTCUSDT}
+      - PRICE_INTERVAL=${PRICE_INTERVAL:-1.0}
+      - ORDER_QUANTITY=${ORDER_QUANTITY:-30.0}
+      - BUY_WINDOW_SIZE=${BUY_WINDOW_SIZE:-10}
+      - SELL_WINDOW_SIZE=${SELL_WINDOW_SIZE:-10}
+      - GRID_MODE=${GRID_MODE:-long}
+      
+      # System configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_FILE=/app/data/market_maker.db
+    volumes:
+      - ./data:/app/data
+      - ./market_maker/configs:/app/configs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - opensqt-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Live Server - Monitoring & Visualization (gRPC Client)
+  live_server:
+    build:
+      context: ./market_maker
+      dockerfile: Dockerfile.live_server
+    container_name: opensqt-live-server
+    depends_on:
+      exchange_connector:
+        condition: service_healthy
+    environment:
+      # Exchange connection via gRPC
+      - EXCHANGE_TYPE=remote
+      - EXCHANGE_GRPC_ADDRESS=exchange_connector:50051
+      
+      # Trading symbol to monitor
+      - SYMBOL=${SYMBOL:-BTCUSDT}
+      - INTERVAL=1m
+      - HISTORICAL_LIMIT=100
+      
+      # WebSocket server configuration
+      - PORT=8081
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8081:8081"  # WebSocket + HTTP
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - opensqt-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL - For DBOS Durable Workflows (optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: opensqt-postgres
+    environment:
+      - POSTGRES_USER=opensqt
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-opensqt_dev}
+      - POSTGRES_DB=opensqt_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opensqt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - opensqt-network
+    profiles:
+      - dbos  # Only start with: docker-compose -f docker-compose.grpc.yml --profile dbos up
+
+networks:
+  opensqt-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+
+# ========================================
+# USAGE GUIDE
+# ========================================
+#
+# 1. Create .env file with exchange credentials:
+#    ```
+#    EXCHANGE=binance
+#    API_KEY=your_binance_api_key
+#    API_SECRET=your_binance_api_secret
+#    SYMBOL=BTCUSDT
+#    LOG_LEVEL=INFO
+#    ```
+#
+# 2. Start all services (SQLite mode):
+#    ```bash
+#    docker-compose -f docker-compose.grpc.yml up -d
+#    ```
+#
+# 3. Start with PostgreSQL/DBOS (optional):
+#    ```bash
+#    docker-compose -f docker-compose.grpc.yml --profile dbos up -d
+#    ```
+#
+# 4. View logs:
+#    ```bash
+#    docker-compose -f docker-compose.grpc.yml logs -f exchange_connector
+#    docker-compose -f docker-compose.grpc.yml logs -f market_maker
+#    docker-compose -f docker-compose.grpc.yml logs -f live_server
+#    ```
+#
+# 5. Access monitoring UI:
+#    Open browser: http://localhost:8081/live.html
+#
+# 6. Stop all services:
+#    ```bash
+#    docker-compose -f docker-compose.grpc.yml down
+#    ```
+#
+# 7. Stop and remove volumes:
+#    ```bash
+#    docker-compose -f docker-compose.grpc.yml down -v
+#    ```
+#
+# ========================================
+# ARCHITECTURE OVERVIEW
+# ========================================
+#
+#   ┌─────────────────────┐
+#   │ exchange_connector  │ ← Single gRPC server wrapping native exchange
+#   │   :50051 (gRPC)     │ ← Manages all exchange WebSocket connections
+#   └──────────┬──────────┘
+#              │
+#      ┌───────┴────────┐
+#      │                │
+#   ┌──▼──────┐    ┌───▼──────────┐
+#   │ market   │    │ live_server  │
+#   │ _maker   │    │   :8081 (WS) │
+#   └──────────┘    └──────────────┘
+#
+# Benefits:
+#   ✅ Single exchange connection (no duplicate WebSockets)
+#   ✅ Centralized rate limiting
+#   ✅ Independent scaling (restart services without reconnecting exchange)
+#   ✅ Fault isolation (exchange issues don't crash trading engine)
+#   ✅ Language independence (Python connectors work seamlessly)
+#   ✅ Consistent data (both binaries see identical exchange state)
+#
+# ========================================
+# SECURITY NOTES
+# ========================================
+#
+# - API keys stored ONLY in exchange_connector
+# - market_maker and live_server have NO direct exchange credentials
+# - gRPC port (50051) should be internal-only in production
+# - Use TLS for gRPC in production deployments
+# - Store .env file securely (never commit to git)
+#
+# ========================================
+# MONITORING & HEALTH CHECKS
+# ========================================
+#
+# Health endpoints:
+#   - exchange_connector: gRPC Health protocol (grpc.health.v1)
+#   - market_maker: http://localhost:8080/health
+#   - live_server: http://localhost:8081/health
+#
+# Check service health:
+#   ```bash
+#   docker-compose -f docker-compose.grpc.yml ps
+#   ```
+#
+# ========================================
+# TROUBLESHOOTING
+# ========================================
+#
+# Q: exchange_connector fails to start
+# A: Check API credentials in .env file
+#    docker-compose -f docker-compose.grpc.yml logs exchange_connector
+#
+# Q: market_maker can't connect to exchange_connector
+# A: Ensure exchange_connector is healthy
+#    docker-compose -f docker-compose.grpc.yml ps
+#
+# Q: live_server shows no data
+# A: Check WebSocket connection in browser console
+#    Verify exchange_connector is streaming data
+#
+# Q: Permission denied errors
+# A: Fix data directory permissions:
+#    mkdir -p data && chmod 755 data
