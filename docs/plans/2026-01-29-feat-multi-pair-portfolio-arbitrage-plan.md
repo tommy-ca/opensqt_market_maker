@@ -36,20 +36,20 @@ This feature evolves the Funding Arbitrage system from a single-pair trading bot
 ### 2. Implementation Phases
 
 #### Phase 1: Foundation & Modeling (Agent-Native)
-- Update `pb.Account` and `pb.Position` with `adjusted_equity`, `margin_mode`, and `haircut` fields.
-- Implement the `MarginSim` with live data fetching for Bybit UTA and Binance PM.
-- **File**: `market_maker/internal/trading/portfolio/marginsim.go`
-- **Tool**: `tools.SimulateMargin` for agent access.
+- [x] Update `pb.Account` and `pb.Position` with `adjusted_equity`, `margin_mode`, and `haircut` fields.
+- [x] Implement the `MarginSim` with live data fetching for Bybit UTA and Binance PM.
+- [x] **File**: `market_maker/internal/trading/portfolio/marginsim.go`
+- [x] **Tool**: `tools.SimulateMargin` for agent access.
 
 #### Phase 2: Allocation & Reconciliation Logic
-- Implement the **Reconciler Pattern**: `Rebalance()` computes `Current_Pos - Target_Pos` and dispatches adjustment orders.
-- Integrate **Hysteresis Bands (6-8%)**: Only rebalance if the profit gain covers $2.5 \times$ roundtrip fees + slippage.
-- **File**: `market_maker/internal/trading/portfolio/allocator.go`
+- [x] Implement the **Reconciler Pattern**: `Rebalance()` computes `Current_Pos - Target_Pos` and dispatches adjustment orders.
+- [x] Integrate **Hysteresis Bands (6-8%)**: Only rebalance if the profit gain covers $2.5 \times$ roundtrip fees + slippage.
+- [x] **File**: `market_maker/internal/trading/portfolio/allocator.go`
 
 #### Phase 3: Orchestration & Durable Recovery
-- Implement the `PortfolioController` loop with **Mid-Swap Validation Gates**.
-- Finalize the `Recover` workflow in `registry.go` to reconcile live exchange state with persisted "Intents" after a crash.
-- **File**: `market_maker/internal/trading/portfolio/controller.go`
+- [x] Implement the `PortfolioController` loop with **Mid-Swap Validation Gates**.
+- [x] Finalize the `Recover` workflow in `registry.go` to reconcile live exchange state with persisted "Intents" after a crash.
+- [x] **File**: `market_maker/internal/trading/portfolio/controller.go`
 
 ## Technical Considerations
 
@@ -61,12 +61,12 @@ This feature evolves the Funding Arbitrage system from a single-pair trading bot
 
 ## Acceptance Criteria
 
-- [ ] `PortfolioController` can manage up to 20 concurrent arbitrage pairs.
-- [ ] Position sizing correctly applies yield-weighting and **Sector Correlation** penalties.
-- [ ] "Shadow Margin" check prevents entries that would drop `health_score` below 0.8.
-- [ ] **Proportional Entry** correctly handles partial fills on the exit leg without margin breaches.
-- [ ] System automatically reduces the lowest-quality position if global margin exceeds 65% (Ranking-Based Reduction).
-- [ ] Agents can simulate trade impact via `tools.SimulateMargin`.
+- [x] `PortfolioController` can manage up to 20 concurrent arbitrage pairs.
+- [x] Position sizing correctly applies yield-weighting and **Sector Correlation** penalties.
+- [x] "Shadow Margin" check prevents entries that would drop `health_score` below 0.8.
+- [x] **Proportional Entry** correctly handles partial fills on the exit leg without margin breaches.
+- [x] System automatically reduces the lowest-quality position if global margin exceeds 65% (Ranking-Based Reduction).
+- [x] Agents can simulate trade impact via `tools.SimulateMargin`.
 
 ## Success Metrics
 
