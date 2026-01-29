@@ -2,20 +2,126 @@
 
 ## 1. Architectural Overview
 
-The OpenSQT Market Maker adopts a modular, microservices-like architecture where the **Trading Engine** and **Exchange Connectors** are decoupled via **gRPC**.
+The OpenSQT Market Maker adopts a modular, polyglot architecture where the **Trading Engine** and **Exchange Connectors** are decoupled via **gRPC**.
 
 ```mermaid
 graph TD
-    A[Trading Engine] -->|Internal Call / gRPC| B[Exchange Connector]
-    B -->|REST/WS| C[Crypto Exchange]
-    A -->|State Persistence| D[SQLite Database]
-    B -->|Market Data| A
+    subgraph "Go Workspace (market_maker/)"
+        A[Trading Engine]
+        B[Exchange Connector gRPC Server]
+        E[DBOS Runtime]
+    end
+    subgraph "Python Workspace (python_connector/)"
+        C[Python Exchange Connectors]
+        F[CCXT / SDKs]
+    end
+    A -->|gRPC| B
+    B -->|Internal Call| A
+    B -->|gRPC Proxy| C
+    C -->|REST/WS| D[Crypto Exchange]
+    A -->|State Persistence| G[PostgreSQL / DBOS]
 ```
 
-### 1.1 Native vs Remote Connectors
+### 1.1 Multi-Language Workspace
+The repository is a hybrid workspace:
+- **Root**: Contains orchestration configs (`docker-compose.yml`, `pyproject.toml`) and documentation.
+- **`market_maker/`**: The core Go project for the high-performance engine (Active Go Workspace).
+- **`python_connector/`**: A Python-based gRPC service providing additional exchange connectivity (Active Python Workspace).
+- **`archive/legacy/`**: Archived monolithic Go code for reference (Excluded from active workspace).
+
+### 1.2 Native vs Remote Connectors
 The system is designed for a **Native-First** approach:
 - **Native Path**: Go-native adapters (Binance, Bitget, Gate, OKX, Bybit) are linked directly into the `market_maker` binary. This path eliminates gRPC overhead and provides the lowest possible latency.
 - **Remote Path**: For exchanges without a Go adapter, the engine connects to a remote gRPC sidecar (e.g., the Python Connector). This is enabled by setting `current_exchange: remote` in the config.
+
+### 1.3 Connector & Model Audit Patterns
+To maintain polyglot consistency, the system follows these audit patterns:
+- **Protocol Parity**: Periodic automated comparison of Go and Python Protobuf generated code to ensure field alignment.
+- **Workflow Verification**: Verification that side-effect heavy workflows (Order Placement/Cancellation) behave identically across all connectors.
+- **Data Model Normalization**: Rigorous mapping from exchange-specific JSON responses to internal `decimal` and `datetime` representations.
+
+### 1.4 Data Model → Workflow → Persistence Map
+- Protos (`types`, `resources`, `events`, `state`) define canonical shapes for Orders, Positions, State, and Events.
+- Simple engine persists `State` (slots, last_price) via SQLite WAL (`internal/engine/simple/store_sqlite.go`).
+- Durable engine wraps trading side effects in DBOS workflows (`internal/engine/durable/workflow.go`) to guarantee exactly-once execution on replay.
+- E2E tests validate these flows end-to-end (crash recovery, risk triggers, DBOS replay, gRPC stack).
+
+### 1.5 Grid Trading Workflow (overview)
+- Inputs: prices + risk signals → `GridStrategy` computes desired order actions.
+- State holder: `SuperPositionManager` tracks slots, order/client maps, and idempotency keys; restores from `pb.State` after crash.
+- Execution: `OrderExecutor` applies rate limits/retries and calls `IExchange` (or Adapter) using `client_order_id` for idempotency.
+- Durable path: `TradingWorkflows.OnPriceUpdate` (DBOS) runs steps: CalculateAdjustments → Execute (place/cancel) → ApplyResults.
+- Validation: offline E2E (simulated exchange + SQLite) must assert crash recovery, risk-trigger cancel, and slot integrity; integration E2E assert gRPC stack and connector parity.
+- Progress: grid idempotency, risk-trigger cancel, and restore-routing now covered by unit tests (see `docs/specs/grid_workflow_audit_spec.md`).
+
+### 1.6 Funding & Arbitrage Workflow (overview)
+- Model: `FundingRate` / `FundingUpdate` use ms timestamps; `predicted_rate` optional; spot returns 0 funding with `next_funding_time=0`.
+- Signal: Arbitrage decisions must consume funding **spread** (short – long) and real interval to compute APR; both legs’ funding streams are required.
+- Pipeline: Exchange connectors → gRPC ExchangeServer (implements funding RPC/streams) → FundingMonitor (configured symbols, no hardcoding) → spread snapshot → ArbitrageEngine/DBOSArbitrageEngine.
+- Execution: Workflows must be idempotent (deterministic `client_order_id`), single in-flight per symbol, and size legs/compensation from executed quantities; margin-capable spot legs must set `use_margin` and surface stable errors on borrow failures.
+- Risk & Metrics: Funding staleness/lag, spread/APR, exposure, margin/liquidation distance, retries/slippage metrics; circuit-breakers pause entry or force exit on unsafe signals.
+
+### 1.6.1 Spot–Perp Funding Strategy (directionality)
+- Positive funding (perp pays): long spot and short perp to collect funding. For shorting spot, set `use_margin=true` on the spot leg and ensure borrow limits allow the size.
+- Negative funding (perp receives): borrow/short spot and long perp to collect funding (respect venue borrow/position limits and risk gates); spot shorting must set `use_margin=true`.
+- Spread/APR uses both legs; entry blocked if either leg data missing or feed is stale.
+- Error handling: margin-disabled / borrow-limit / insufficient collateral must map to deterministic errors that block re-entry until conditions change; duplicate `client_order_id` must return idempotent success.
+
+### 1.7 Metrics Monitor (funding/grid/arb)
+- Data quality: feed staleness seconds and stream lag ms for price/order/funding/position feeds; reconnect counters per stream.
+- Funding: gauges for current/predicted funding, spread, and spread APR per (long_exchange, short_exchange, symbol) with bounded label sets.
+- Risk: exposure (spot/perp/net), margin ratio, liquidation distance per exchange/symbol; state gauge for arb entry/exit.
+- Execution: retries/failures (small reason enum), hedge slippage histogram, rate-limit wait (optional) with low-cardinality labels.
+- Circuit-break actions: stale feeds, high retries, unsafe margin/liquidation distance trigger breakers to pause entry/quote and/or force exit per strategy policy.
+- Funding monitor behavior: symbols are provided by config (no hardcoding), staleness (TTL) is exposed per exchange/symbol and must gate arb entry when stale.
+
+### 1.8 TDD Plan (funding/arb)
+- RED: unit tests for funding mapping (per venue), ms timestamps, spot sentinel, predicted_rate optional.
+- RED: spread/APR calculator uses both legs and real interval; no decision if either leg missing.
+- RED: FundingMonitor staleness TTL and Subscribe(exchange,symbol) filtering.
+- RED: workflow idempotency (deterministic client_order_id) and single in-flight guard; partial-fill sizing of opposite leg/unwind.
+- RED: margin flag propagation (`use_margin`) for spot legs; margin rejection handling and error mapping; borrow-limit guardrails.
+- GREEN/REFACTOR: implement then refactor with metrics and circuit-breakers enabled.
+
+### 1.6.2 Margin Flag Propagation (design detail)
+- Protocol: `PlaceOrderRequest.use_margin` (bool, default false) controls spot margin routing; must be ignored for perp legs.
+- Engine: Arbitrage planner sets `use_margin=true` for spot short (or borrow-requiring) legs; planner must fail fast if venue/config marks margin unsupported.
+- Connector (Go Binance Spot): translate `use_margin` into margin endpoint/params, reuse `client_order_id`, and preserve idempotent handling for duplicate IDs; map margin-specific errors to `apperrors`.
+- Connector (Python): mirror the above semantics and mapping for parity; share error code map in `python_connector/src/connector/errors.py`.
+- Tests: unit tests on planners (flag set), connector margin path, and offline E2E to ensure spread decision leads to correct margin behavior and stable error mapping.
+- Backward compatibility: `use_margin` is optional and defaults false; existing non-margin flows remain unchanged.
+- Replay/resume: DBOS/simple engines must persist and replay `use_margin` as part of workflow/order DTOs so retries do not lose margin routing.
+
+Update: Compensation paths now preserve `use_margin` to avoid dropping margin routing during rollback/cleanup. Python gate pending: regenerate protos and align tests to `resources_pb2`/`types_pb2`, add pytest-asyncio config (REQ-ARB-019/020/021).
+
+### 1.6.3 Phase 28 Test Plan (TDD)
+- Proto RED: assert `use_margin` field exists and serializes/deserializes in Go/Python stubs.
+- Engine RED: planner sets `use_margin` on spot short legs; missing flag causes rejection; flag present proceeds.
+- Connector RED (Go/Python): margin path selects correct endpoint/params, preserves `client_order_id`, and maps duplicate/borrow-limit errors deterministically.
+- E2E RED (offline): positive/negative funding scenarios validate margin routing, rejection handling, and no duplicate orders.
+- GREEN: implement to satisfy RED; audit/tests must pass before refactor.
+
+### 1.6.4 Margin Error Mapping (design detail)
+- Map to shared `apperrors` categories:
+  - margin disabled → `ErrMarginUnavailable` (retry-safe when config/venue changes)
+  - borrow cap exceeded / insufficient collateral → `ErrInsufficientCollateral`
+  - duplicate `client_order_id` → idempotent success / `ErrAlreadyExists`
+  - generic margin rejection → `ErrUpstreamRejected`
+- Go/Python connectors share the same mapping table; tests assert parity and determinism.
+- Progress: spread calculator (`ComputeSpread`, `AnnualizeSpread`) implemented with unit tests.
+
+### 1.5 Grid Trading Workflow (overview)
+- Inputs: prices + risk signals → `GridStrategy` computes desired order actions.
+- State holder: `SuperPositionManager` tracks slots, order/client maps, and idempotency keys; restores from `pb.State` after crash.
+- Execution: `OrderExecutor` applies rate limits/retries and calls `IExchange` (or Adapter) using `client_order_id` for idempotency.
+- Durable path: `TradingWorkflows.OnPriceUpdate` (DBOS) runs steps: CalculateAdjustments → Execute (place/cancel) → ApplyResults.
+- Validation: offline E2E (simulated exchange + SQLite) must assert crash recovery, risk-trigger cancel, and slot integrity; integration E2E assert gRPC stack and connector parity.
+
+### 7.5 Test Suite Structure (Grid focus)
+- Offline (must run): unit/race suites (`./internal`, `./pkg`) and targeted E2E (`CrashRecovery`, `RiskProtection`, `TradingFlow`).
+- Integration (env/tag): full `./tests/e2e` matrix (startup, loopback, health, DBOS, arbitrage) when deps are available.
+- TDD: add RED tests for grid invariants (idempotent client_order_id, risk-trigger cancel, restore routing), then GREEN implementations, then refactor.
+- Progress: grid idempotency, risk-trigger cancel, and restore-routing now covered by unit tests (see `docs/specs/grid_workflow_audit_spec.md`).
 
 ## 2. Exchange Connector
 
@@ -26,14 +132,17 @@ The system is designed for a **Native-First** approach:
 
 ### 2.2 Interface Design
 - **Schema**: Defined in `api/proto/opensqt/market_maker/v1/`.
-- **Standardization**: Managed via the **Buf CLI**. All field names follow Go/Python idiomatic casing (e.g., `OrderId`, `ClientOrderId`).
+- **Standardization**: Managed via the **Buf CLI**.
+  - Protobuf field names MUST be `snake_case` (e.g., `order_id`, `client_order_id`).
+  - Generated Go fields are produced by `protoc-gen-go` and will typically be `OrderId` / `ClientOrderId`.
+  - Hand-written Go code MUST use idiomatic acronyms for locals and parameters (e.g., `orderID`, `clientOrderID`) to satisfy `staticcheck` (ST1003) without editing generated code.
 
 ## 3. Trading Engine (Core)
 
 ### 3.1 Durable Workflows
 The core logic relies on a durable execution model to ensure reliability and crash recovery.
 - **Simple Implementation**: The `SimpleEngine` persists state transitions to a SQLite database (`Store`) *before* acknowledging completion.
-- **DBOS Implementation**: The `DBOSEngine` leverages the DBOS runtime to provide true durable workflows. Decisions and side effects are wrapped in `ctx.RunWorkflow` and `ctx.RunAsStep`, providing exactly-once execution and durable progress.
+- **DBOS Implementation**: The `DBOSEngine` leverages the DBOS runtime to provide true durable workflows. All exchange side-effects (Place/Cancel Order) MUST be executed within `ctx.RunWorkflow` or as atomic steps via `ctx.RunAsStep` to ensure exactly-once execution and survivability across process restarts.
 - **Guarantee**: On crash, the system reloads the grid and reconciles with the exchange via `RestoreFromExchangePosition`.
 
 ### 3.2 Modular Strategy Execution
@@ -669,7 +778,18 @@ Standardized Grafana dashboards (`configs/dashboards/`) visualize key metrics fo
 The `market_maker/` directory includes a `Makefile` that serves as the single entry point for all development tasks:
 - `make build`: Compiles all project binaries.
 - `make test`: Runs the full test suite with race detection.
-- `make audit`: Runs comprehensive quality checks (linting, vulnerability scans).
+- `make audit`: Runs comprehensive quality checks (formatting, `go vet`, `staticcheck`, and a `govulncheck` pass).
+
+### 7.3 Local Audit vs CI
+Some environments may block `govulncheck` from fetching the vulnerability database (e.g., HTTP 403 from `vuln.go.dev`).
+- Local workflow: treat this as a warning (audit should still succeed).
+- CI workflow: run `govulncheck` in a network-permitted environment and fail the build on findings.
+
+### 7.4 Delivery Workflow (Specs + TDD)
+- **Specs-Driven**: For non-trivial changes, update or add a spec under `docs/specs/` before coding.
+- **TDD**: Add or extend tests first (RED), implement (GREEN), then refactor with tests passing.
+- **Pre-flight**: Run `cd market_maker && make audit` before submitting changes.
+- **Atomic & Clean**: Use small, atomic commits and keep the worktree free of generated artifacts (pyc, db-wal/shm, binaries) to avoid noisy diffs.
 - `make proto`: Regenerates gRPC code from definitions.
 
 ### 7.2 Git Hooks (pre-commit)
@@ -677,3 +797,24 @@ The repository uses the `pre-commit` framework to enforce standards at the time 
 - **Go**: Validated via `golangci-lint` and `go-mod-tidy`.
 - **Python**: Validated via `ruff`.
 - **General**: YAML validation and whitespace enforcement.
+
+## 8. Funding & Arbitrage Architecture (Phase 27)
+
+### 8.1 Funding Pipeline
+The funding pipeline ensures consistent ingestion and dissemination of funding rates:
+1.  **Exchange Connectors**: Ingest raw JSON/WS data and map to standardized `pb.FundingRate` / `pb.FundingUpdate` messages using millisecond timestamps.
+2.  **ExchangeServer**: Exposes `GetFundingRate`, `GetFundingRates`, and `SubscribeFundingRate` via gRPC.
+3.  **FundingMonitor**: A central registry that tracks rates across multiple exchanges, detects staleness (TTL), and provides filtered subscriptions.
+4.  **Strategy Engines**: Consume spread snapshots from the monitor and trigger entries/exits based on APR thresholds.
+
+### 8.2 Safe Execution
+Arbitrage workflows are designed for durability and idempotency:
+- **Deterministic IDs**: `client_order_id` is derived from `(side, symbol, next_funding_time)`, ensuring that replaying a workflow step doesn't create duplicate orders on the exchange.
+- **Partial Fill Handling**: The `SequenceExecutor` and DBOS workflows track `ExecutedQty`. If a leg is only partially filled, the next leg (hedge or exit) is sized exactly to match the executed amount.
+- **Compensation**: If a critical leg fails, the system automatically unwinds the previously filled legs to maintain a neutral or safe state.
+
+### 8.3 Bidirectional Arbitrage
+The system supports both positive and negative funding scenarios:
+1.  **Positive Funding**: Spot Leg = BUY (Spot), Perp Leg = SELL (Short).
+2.  **Negative Funding**: Spot Leg = SELL (Short Margin), Perp Leg = BUY (Long).
+The engine automatically determines the correct sides and whether to use margin based on the funding spread.

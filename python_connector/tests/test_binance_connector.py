@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.connector.binance import BinanceConnector
 from opensqt.market_maker.v1 import exchange_pb2
-from opensqt.market_maker.v1 import models_pb2
+from opensqt.market_maker.v1 import resources_pb2 as models_pb2, types_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
 
@@ -61,8 +61,8 @@ async def test_binance_place_order():
 
         request = models_pb2.PlaceOrderRequest(
             symbol="BTC/USDT",
-            side=models_pb2.ORDER_SIDE_BUY,
-            type=models_pb2.ORDER_TYPE_LIMIT,
+            side=types_pb2.ORDER_SIDE_BUY,
+            type=types_pb2.ORDER_TYPE_LIMIT,
             quantity=models_pb2.google_dot_type_dot_decimal__pb2.Decimal(value="1.0"),
             price=models_pb2.google_dot_type_dot_decimal__pb2.Decimal(value="45000.0"),
             client_order_id="my_id",
@@ -72,5 +72,5 @@ async def test_binance_place_order():
 
         assert response.order_id == 12345
         assert response.client_order_id == "my_id"
-        assert response.status == models_pb2.ORDER_STATUS_NEW
+        assert response.status == types_pb2.ORDER_STATUS_NEW
         await connector.stop()

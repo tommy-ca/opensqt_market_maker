@@ -31,6 +31,11 @@ config.yaml
 # 如果以后有本地覆盖配置，也可以加：
 # config.local.yaml
 
+# Environment files with credentials
+.env
+.env.local
+.env.*.local
+
 ################################
 # Go 相关忽略
 ################################
@@ -45,6 +50,17 @@ vendor/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+################################
+# Python 相关忽略
+################################
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
 
 
 opensqt

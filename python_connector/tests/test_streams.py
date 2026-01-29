@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.connector.binance import BinanceConnector
 from opensqt.market_maker.v1 import exchange_pb2
-from opensqt.market_maker.v1 import models_pb2
+from opensqt.market_maker.v1 import resources_pb2 as models_pb2
 from google.type import decimal_pb2
 
 
@@ -12,24 +12,23 @@ async def test_subscribe_price_multi_symbol():
     with patch("ccxt.pro.binance") as mock_ccxt:
         mock_instance = mock_ccxt.return_value
 
-        # We need watch_ticker to return different values based on symbol
-        async def side_effect(symbol):
+        # We need watch_tickers to return values for all symbols
+        async def side_effect(symbols):
             await asyncio.sleep(0.01)  # Small delay to prevent tight loop
-            if symbol == "BTC/USDT":
-                return {
+            return {
+                "BTC/USDT": {
                     "symbol": "BTC/USDT",
                     "last": 50000.0,
                     "timestamp": 1600000000000,
-                }
-            if symbol == "ETH/USDT":
-                return {
+                },
+                "ETH/USDT": {
                     "symbol": "ETH/USDT",
                     "last": 3000.0,
                     "timestamp": 1600000000000,
-                }
-            return {"symbol": symbol, "last": 0, "timestamp": 0}
+                },
+            }
 
-        mock_instance.watch_ticker = AsyncMock(side_effect=side_effect)
+        mock_instance.watch_tickers = AsyncMock(side_effect=side_effect)
         mock_instance.close = AsyncMock()
 
         connector = BinanceConnector("key", "secret")
@@ -41,19 +40,16 @@ async def test_subscribe_price_multi_symbol():
         stream = connector.SubscribePrice(request, None)
 
         results = []
-        try:
-            async for price_change in stream:
-                results.append(price_change)
-                if len(results) >= 2:
-                    break
-        except Exception as e:
-            pass
+        # Get 2 updates (one for each symbol)
+        results.append(await anext(stream))
+        results.append(await anext(stream))
 
         # Verify we got both symbols
         symbols_received = {r.symbol for r in results}
         assert "BTC/USDT" in symbols_received
         assert "ETH/USDT" in symbols_received
 
+        await stream.aclose()
         await connector.stop()
 
 
@@ -74,11 +70,11 @@ async def test_subscribe_account():
         stream = connector.SubscribeAccount(request, None)
 
         # Get one update
-        async for account in stream:
-            assert account.total_wallet_balance.value == "1000.0"
-            assert account.available_balance.value == "500.0"
-            break
+        account = await anext(stream)
+        assert account.total_wallet_balance.value == "1000.0"
+        assert account.available_balance.value == "500.0"
 
+        await stream.aclose()
         await connector.stop()
 
 
@@ -109,10 +105,10 @@ async def test_subscribe_positions():
         request = exchange_pb2.SubscribePositionsRequest(symbol="BTC/USDT")
         stream = connector.SubscribePositions(request, None)
 
-        async for position in stream:
-            assert position.symbol == "BTC/USDT"
-            assert position.size.value == "0.5"
-            assert position.unrealized_pnl.value == "500.0"
-            break
+        position = await anext(stream)
+        assert position.symbol == "BTC/USDT"
+        assert position.size.value == "0.5"
+        assert position.unrealized_pnl.value == "500.0"
 
+        await stream.aclose()
         await connector.stop()

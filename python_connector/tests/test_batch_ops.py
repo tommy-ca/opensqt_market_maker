@@ -3,7 +3,8 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 from src.connector.binance import BinanceConnector
 from opensqt.market_maker.v1 import exchange_pb2
-from opensqt.market_maker.v1 import models_pb2
+from opensqt.market_maker.v1 import resources_pb2 as models_pb2
+from opensqt.market_maker.v1 import types_pb2
 from google.type import decimal_pb2
 
 
@@ -52,16 +53,16 @@ async def test_batch_place_orders():
 
         req1 = models_pb2.PlaceOrderRequest(
             symbol="BTC/USDT",
-            side=models_pb2.ORDER_SIDE_BUY,
-            type=models_pb2.ORDER_TYPE_LIMIT,
+            side=types_pb2.ORDER_SIDE_BUY,
+            type=types_pb2.ORDER_TYPE_LIMIT,
             quantity=decimal_pb2.Decimal(value="1.0"),
             price=decimal_pb2.Decimal(value="50000.0"),
             client_order_id="c1",
         )
         req2 = models_pb2.PlaceOrderRequest(
             symbol="BTC/USDT",
-            side=models_pb2.ORDER_SIDE_SELL,
-            type=models_pb2.ORDER_TYPE_LIMIT,
+            side=types_pb2.ORDER_SIDE_SELL,
+            type=types_pb2.ORDER_TYPE_LIMIT,
             quantity=decimal_pb2.Decimal(value="0.5"),
             price=decimal_pb2.Decimal(value="51000.0"),
             client_order_id="c2",

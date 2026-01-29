@@ -4,11 +4,14 @@ from opensqt.market_maker.v1 import exchange_pb2
 from opensqt.market_maker.v1 import exchange_pb2_grpc
 import sys
 import os
+import pytest
 
 # Ensure we can import from the current directory
 sys.path.append(os.path.abspath("."))
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_public_market_data():
     # 1. Start the connector in the background (or assume it's already running for integration test)
     # For a self-contained script, we'll import and use the servicer directly without a real network if possible,
@@ -37,20 +40,20 @@ async def test_public_market_data():
             response = await stub.GetLatestPrice(
                 exchange_pb2.GetLatestPriceRequest(symbol=symbol)
             )
-            print(f"Price: {response.price}")
-            assert float(response.price) > 0
+            print(f"Price: {response.price.value}")
+            assert float(response.price.value) > 0
 
             # Test SubscribePrice (stream)
             print(
                 f"Subscribing to price updates for {symbol} (waiting for 3 updates)..."
             )
             stream = stub.SubscribePrice(
-                exchange_pb2.SubscribePriceRequest(symbol=symbol)
+                exchange_pb2.SubscribePriceRequest(symbols=[symbol])
             )
             count = 0
             async for update in stream:
                 print(
-                    f"Update {count + 1}: {update.price} at {update.timestamp.ToDatetime()}"
+                    f"Update {count + 1}: {update.price.value} at {update.timestamp.ToDatetime()}"
                 )
                 count += 1
                 if count >= 3:

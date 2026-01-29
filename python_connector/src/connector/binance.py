@@ -1,12 +1,13 @@
 import asyncio
 import ccxt.pro as ccxtpro
 import ccxt.async_support as ccxt
-from opensqt.market_maker.v1 import exchange_pb2
+from opensqt.market_maker.v1 import exchange_pb2, types_pb2
 from opensqt.market_maker.v1 import exchange_pb2_grpc
-from opensqt.market_maker.v1 import models_pb2
+from opensqt.market_maker.v1 import resources_pb2 as models_pb2
 from google.type import decimal_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 import datetime
+from .errors import handle_ccxt_exception, retry_transient
 
 
 class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
@@ -32,17 +33,24 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
         await self.exchange.close()
         await self.exchange_pro.close()
 
+    @handle_ccxt_exception
+    @retry_transient()
+    @retry_transient()
     async def GetName(self, request, context):
         return exchange_pb2.GetNameResponse(name="binance")
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def GetType(self, request, context):
         extype = (
-            exchange_pb2.EXCHANGE_TYPE_FUTURES
+            types_pb2.EXCHANGE_TYPE_FUTURES
             if self.exchange_type == "futures"
-            else exchange_pb2.EXCHANGE_TYPE_SPOT
+            else types_pb2.EXCHANGE_TYPE_SPOT
         )
         return exchange_pb2.GetTypeResponse(type=extype)
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def GetLatestPrice(self, request, context):
         symbol = request.symbol
         ticker = await self.exchange.fetch_ticker(symbol)
@@ -50,6 +58,8 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
             price=decimal_pb2.Decimal(value=str(ticker["last"]))
         )
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def GetSymbolInfo(self, request, context):
         symbol = request.symbol
         if not self.exchange.markets:
@@ -77,6 +87,8 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
             ),
         )
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def PlaceOrder(self, request, context):
         symbol = request.symbol
         side = self._reverse_map_side(request.side)
@@ -95,13 +107,33 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
             params["timeInForce"] = "GTX"
         if request.reduce_only:
             params["reduceOnly"] = True
+        if request.use_margin:
+            params["margin"] = True
 
-        order = await self.exchange.create_order(
-            symbol, order_type, side, amount, price, params
-        )
+        try:
+            order = await self.exchange.create_order(
+                symbol, order_type, side, amount, price, params
+            )
+        except ccxt.DuplicateOrderId:
+            # If we get duplicate ID, it means the order already exists.
+            # We can try to fetch it.
+            if request.client_order_id:
+                # CCXT fetch_order usually takes (id, symbol)
+                # Some exchanges allow fetching by clientOrderId in params
+                try:
+                    order = await self.exchange.fetch_order(
+                        None, symbol, {"clientOrderId": request.client_order_id}
+                    )
+                except Exception as e:
+                    print(f"Failed to fetch existing order after DuplicateOrderId: {e}")
+                    raise
+            else:
+                raise
 
         return self._map_order(order)
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def BatchPlaceOrders(self, request, context):
         if self.exchange.has.get("createOrders"):
             ccxt_orders = []
@@ -163,45 +195,14 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
             orders=response_orders, all_success=all_success
         )
 
-        if self.exchange.has.get("createOrders"):
-            # This is exchange specific, CCXT structure might vary.
-            # For Binance, create_orders takes a list of dicts but the signature in CCXT wrapper
-            # usually expects the same args as create_order but as a list?
-            # Actually CCXT 'createOrders' takes a list of order definitions.
-            # However, mapping that correctly can be tricky.
-            # Using asyncio.gather on create_order is safer/easier for parity unless strict atomicity is required.
-            # But the spec says "Use ccxt.create_orders (if available)".
-            # Let's try to use concurrent execution for now as it's more robust across versions unless we are sure of the structure.
-            # Re-reading spec: "Execute via create_orders (if available) or parallel create_order."
-            pass
-
-        # Using parallel execution for simplicity and robustness
-        tasks = []
-        for req in request.orders:
-            tasks.append(self.PlaceOrder(req, context))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        response_orders = []
-        all_success = True
-
-        for res in results:
-            if isinstance(res, Exception):
-                print(f"Batch order error: {res}")
-                all_success = False
-                # Add empty/failed order placeholder? The proto response expects `repeated Order orders`.
-                # We should probably return what we can.
-            else:
-                response_orders.append(res)
-
-        return exchange_pb2.BatchPlaceOrdersResponse(
-            orders=response_orders, all_success=all_success
-        )
-
+    @handle_ccxt_exception
+    @retry_transient()
     async def CancelOrder(self, request, context):
         await self.exchange.cancel_order(str(request.order_id), request.symbol)
         return exchange_pb2.CancelOrderResponse()
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def BatchCancelOrders(self, request, context):
         symbol = request.symbol
         order_ids = request.order_ids
@@ -217,61 +218,159 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
 
         return exchange_pb2.BatchCancelOrdersResponse()
 
+    @handle_ccxt_exception
+    @retry_transient()
     async def GetAccount(self, request, context):
         balance = await self.exchange.fetch_balance()
         total_wallet = str(balance.get("total", {}).get("USDT", "0"))
         available = str(balance.get("free", {}).get("USDT", "0"))
 
+        # Fetch positions to populate the account snapshot
+        positions = await self.GetPositions(exchange_pb2.GetPositionsRequest(), context)
+
         return models_pb2.Account(
             total_wallet_balance=decimal_pb2.Decimal(value=total_wallet),
             total_margin_balance=decimal_pb2.Decimal(value=total_wallet),
             available_balance=decimal_pb2.Decimal(value=available),
-            positions=[],
+            positions=positions.positions,
             account_leverage=10,
         )
 
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetOrder(self, request, context):
+        order = await self.exchange.fetch_order(str(request.order_id), request.symbol)
+        return self._map_order(order)
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetOpenOrders(self, request, context):
+        orders = await self.exchange.fetch_open_orders(request.symbol)
+        response_orders = [self._map_order(o) for o in orders]
+        return exchange_pb2.GetOpenOrdersResponse(orders=response_orders)
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetPositions(self, request, context):
+        positions = await self.exchange.fetch_positions()
+        if request.symbol:
+            positions = [p for p in positions if p["symbol"] == request.symbol]
+
+        res = []
+        for p in positions:
+            if float(p.get("contracts", 0)) == 0 and float(p.get("size", 0)) == 0:
+                continue
+
+            res.append(
+                models_pb2.Position(
+                    symbol=p["symbol"],
+                    size=decimal_pb2.Decimal(
+                        value=str(p.get("contracts") or p.get("size", "0"))
+                    ),
+                    entry_price=decimal_pb2.Decimal(
+                        value=str(p.get("entryPrice", "0"))
+                    ),
+                    mark_price=decimal_pb2.Decimal(value=str(p.get("markPrice", "0"))),
+                    unrealized_pnl=decimal_pb2.Decimal(
+                        value=str(p.get("unrealizedPnl", "0"))
+                    ),
+                    leverage=int(p.get("leverage", 1)),
+                    margin_type=p.get("marginMode", "cross"),
+                    liquidation_price=decimal_pb2.Decimal(
+                        value=str(p.get("liquidationPrice", "0"))
+                    ),
+                )
+            )
+        return exchange_pb2.GetPositionsResponse(positions=res)
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetSymbols(self, request, context):
+        if not self.exchange.markets:
+            await self.exchange.load_markets()
+        return exchange_pb2.GetSymbolsResponse(
+            symbols=list(self.exchange.markets.keys())
+        )
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetFundingRate(self, request, context):
+        symbol = request.symbol
+        rate = await self.exchange.fetch_funding_rate(symbol)
+        return models_pb2.FundingRate(
+            exchange="binance",
+            symbol=symbol,
+            rate=decimal_pb2.Decimal(value=str(rate["fundingRate"])),
+            next_funding_time=int(rate.get("nextFundingTime", 0)),
+            timestamp=int(rate.get("timestamp", 0)),
+        )
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetFundingRates(self, request, context):
+        rates = await self.exchange.fetch_funding_rates()
+        res = []
+        for symbol, rate in rates.items():
+            res.append(
+                models_pb2.FundingRate(
+                    exchange="binance",
+                    symbol=symbol,
+                    rate=decimal_pb2.Decimal(value=str(rate["fundingRate"])),
+                    next_funding_time=int(rate.get("nextFundingTime", 0)),
+                    timestamp=int(rate.get("timestamp", 0)),
+                )
+            )
+        return exchange_pb2.GetFundingRatesResponse(rates=res)
+
+    @handle_ccxt_exception
+    @retry_transient()
+    async def GetTickers(self, request, context):
+        tickers = await self.exchange.fetch_tickers()
+        res = []
+        for symbol, t in tickers.items():
+            res.append(
+                models_pb2.Ticker(
+                    symbol=symbol,
+                    price_change=decimal_pb2.Decimal(value=str(t.get("change", "0"))),
+                    price_change_percent=decimal_pb2.Decimal(
+                        value=str((t.get("percentage", 0) or 0) / 100.0)
+                    ),
+                    last_price=decimal_pb2.Decimal(value=str(t.get("last", "0"))),
+                    volume=decimal_pb2.Decimal(value=str(t.get("baseVolume", "0"))),
+                    quote_volume=decimal_pb2.Decimal(
+                        value=str(t.get("quoteVolume", "0"))
+                    ),
+                    timestamp=int(t.get("timestamp", 0)),
+                )
+            )
+        return exchange_pb2.GetTickersResponse(tickers=res)
+
     async def SubscribePrice(self, request, context):
         symbols = request.symbols
+        if not symbols:
+            return
 
-        async def watch_ticker_loop(symbol):
-            while True:
-                try:
-                    ticker = await self.exchange_pro.watch_ticker(symbol)
-                    price_change = models_pb2.PriceChange(
-                        symbol=ticker["symbol"],
-                        price=decimal_pb2.Decimal(value=str(ticker["last"])),
-                        timestamp=Timestamp(),
-                    )
-                    price_change.timestamp.FromMilliseconds(ticker["timestamp"])
-                    yield price_change
-                except Exception as e:
-                    print(f"Error in SubscribePrice for {symbol}: {e}")
-                    await asyncio.sleep(5)
-
-        # Create generators for each symbol
-        generators = [watch_ticker_loop(s) for s in symbols]
-
-        # Merge generators using asyncio.Queue or similar pattern
-        # Since we are in an async generator, we can't easily use asyncio.gather on generators directly to yield.
-        # Common pattern: spawn tasks that feed a shared queue, and yield from queue.
-
-        queue = asyncio.Queue()
-
-        async def producer(gen):
-            async for item in gen:
-                await queue.put(item)
-
-        producers = [asyncio.create_task(producer(gen)) for gen in generators]
-
-        try:
-            while True:
-                # Get next item from any producer
-                item = await queue.get()
-                yield item
-        except asyncio.CancelledError:
-            for p in producers:
-                p.cancel()
-            raise
+        while True:
+            try:
+                # CCXT Pro watch_tickers is more efficient for multiple symbols
+                tickers = await self.exchange_pro.watch_tickers(symbols)
+                # watch_tickers returns a dict of symbols to ticker objects
+                # We only want to yield the ones that changed or were requested
+                for symbol in symbols:
+                    if symbol in tickers:
+                        ticker = tickers[symbol]
+                        price_change = models_pb2.PriceChange(
+                            symbol=ticker["symbol"],
+                            price=decimal_pb2.Decimal(value=str(ticker["last"])),
+                            timestamp=Timestamp(),
+                        )
+                        price_change.timestamp.FromMilliseconds(ticker["timestamp"])
+                        yield price_change
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Error in SubscribePrice: {e}")
+                await asyncio.sleep(5)
 
     async def SubscribeOrders(self, request, context):
         while True:
@@ -395,46 +494,46 @@ class BinanceConnector(exchange_pb2_grpc.ExchangeServiceServicer):
     def _map_side(self, side):
         s = (side or "").lower()
         if s == "buy":
-            return models_pb2.ORDER_SIDE_BUY
+            return types_pb2.ORDER_SIDE_BUY
         if s == "sell":
-            return models_pb2.ORDER_SIDE_SELL
-        return models_pb2.ORDER_SIDE_UNSPECIFIED
+            return types_pb2.ORDER_SIDE_SELL
+        return types_pb2.ORDER_SIDE_UNSPECIFIED
 
     def _map_type(self, order_type):
         t = (order_type or "").lower()
         if t == "limit":
-            return models_pb2.ORDER_TYPE_LIMIT
+            return types_pb2.ORDER_TYPE_LIMIT
         if t == "market":
-            return models_pb2.ORDER_TYPE_MARKET
-        return models_pb2.ORDER_TYPE_UNSPECIFIED
+            return types_pb2.ORDER_TYPE_MARKET
+        return types_pb2.ORDER_TYPE_UNSPECIFIED
 
     def _map_status(self, status):
         s = (status or "").lower()
         if s == "open" or s == "new":
-            return models_pb2.ORDER_STATUS_NEW
+            return types_pb2.ORDER_STATUS_NEW
         if s == "closed" or s == "filled":
-            return models_pb2.ORDER_STATUS_FILLED
+            return types_pb2.ORDER_STATUS_FILLED
         if s == "canceled" or s == "cancelled":
-            return models_pb2.ORDER_STATUS_CANCELED
+            return types_pb2.ORDER_STATUS_CANCELED
         if s == "rejected":
-            return models_pb2.ORDER_STATUS_REJECTED
+            return types_pb2.ORDER_STATUS_REJECTED
         if s == "expired":
-            return models_pb2.ORDER_STATUS_EXPIRED
+            return types_pb2.ORDER_STATUS_EXPIRED
         if "partial" in s:
-            return models_pb2.ORDER_STATUS_PARTIALLY_FILLED
-        return models_pb2.ORDER_STATUS_UNSPECIFIED
+            return types_pb2.ORDER_STATUS_PARTIALLY_FILLED
+        return types_pb2.ORDER_STATUS_UNSPECIFIED
 
     def _reverse_map_side(self, side):
-        if side == models_pb2.ORDER_SIDE_BUY:
+        if side == types_pb2.ORDER_SIDE_BUY:
             return "buy"
-        if side == models_pb2.ORDER_SIDE_SELL:
+        if side == types_pb2.ORDER_SIDE_SELL:
             return "sell"
         return "buy"
 
     def _reverse_map_type(self, order_type):
-        if order_type == models_pb2.ORDER_TYPE_LIMIT:
+        if order_type == types_pb2.ORDER_TYPE_LIMIT:
             return "limit"
-        if order_type == models_pb2.ORDER_TYPE_MARKET:
+        if order_type == types_pb2.ORDER_TYPE_MARKET:
             return "market"
         return "limit"
 
