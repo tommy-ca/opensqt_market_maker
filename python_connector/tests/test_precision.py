@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
 from src.connector.binance import BinanceConnector
-from opensqt.market_maker.v1 import resources_pb2 as models_pb2, types_pb2
+from opensqt.market_maker.v1 import exchange_pb2, resources_pb2 as models_pb2, types_pb2
 from google.type import decimal_pb2
 from decimal import Decimal
 
@@ -121,7 +121,9 @@ async def test_get_positions_filtering():
         connector = BinanceConnector("key", "secret")
         connector.exchange = mock_instance
 
-        response = await connector.GetPositions(models_pb2.GetPositionsRequest(), None)
+        response = await connector.GetPositions(
+            exchange_pb2.GetPositionsRequest(), None
+        )
 
         assert len(response.positions) == 1
         assert response.positions[0].symbol == "ETH/USDT"

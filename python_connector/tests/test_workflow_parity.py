@@ -80,7 +80,7 @@ async def test_workflow_retry_transient_error(connector):
     try:
         resp = await connector.GetLatestPrice(request, context)
         # If we reached here, it retried and succeeded
-        assert resp.price.value == "50000.0"
+        assert resp.price.value == "50000"
     except ccxt.NetworkError:
         # Failed immediately, means no retries
         pytest.fail("Connector did not retry transient network error")

@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock
 import ccxt
 import grpc
-from python_connector.src.connector.errors import handle_ccxt_exception
+from src.connector.errors import handle_ccxt_exception
 
 
 class MockServicer:

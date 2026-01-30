@@ -32,8 +32,8 @@ log/
 *.dll
 *.so
 *.dylib
-opensqt
-opensqt_free
+/opensqt
+/opensqt_free
 
 # Test coverage
 coverage.out
@@ -70,3 +70,11 @@ __pycache__/
 # OS files
 Thumbs.db
 .Trash-*
+
+# Review artifacts
+*.patch
+*.diff
+pr_changes.diff
+review_diff.patch
+full_review.patch
+

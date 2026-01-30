@@ -1,16 +1,47 @@
-import asyncio
-import grpc
-import os
 import argparse
+import asyncio
+import logging
+import os
+from typing import Optional
+
+import grpc
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from opensqt.market_maker.v1 import exchange_pb2_grpc
+
 from src.connector.binance import BinanceConnector
-from concurrent import futures
-from grpc_health.v1 import health
-from grpc_health.v1 import health_pb2_grpc
+
+# Setup structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("connector")
+
+
+class AuthInterceptor(grpc.aio.ServerInterceptor):
+    def __init__(self, token: str):
+        self._token = token
+
+    async def intercept_service(self, continuation, handler_call_details):
+        # Allow health checks without auth if needed, or enforce everywhere
+        # For simplicity, enforce everywhere
+        metadatas = dict(handler_call_details.invocation_metadata)
+        if metadatas.get("authorization") != f"Bearer {self._token}":
+            return self._abort_unauthenticated()
+        return await continuation(handler_call_details)
+
+    def _abort_unauthenticated(self):
+        async def abort_handler(request, context):
+            await context.abort(
+                grpc.StatusCode.UNAUTHENTICATED, "Invalid or missing auth token"
+            )
+
+        return grpc.unary_unary_rpc_method_handler(abort_handler)
 
 
 async def serve():
     parser = argparse.ArgumentParser(description="Binance gRPC Connector (Python)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=50051, help="gRPC server port")
     parser.add_argument(
         "--exchange_type",
@@ -19,15 +50,29 @@ async def serve():
         choices=["spot", "futures"],
         help="Binance exchange type",
     )
+    parser.add_argument("--tls_cert", type=str, help="Path to TLS certificate file")
+    parser.add_argument("--tls_key", type=str, help="Path to TLS private key file")
+    parser.add_argument(
+        "--auth_token", type=str, help="Shared secret for authentication"
+    )
+
     args = parser.parse_args()
 
     api_key = os.environ.get("BINANCE_API_KEY", "")
     secret_key = os.environ.get("BINANCE_SECRET_KEY", "")
 
     if not api_key or not secret_key:
-        print("Warning: BINANCE_API_KEY or BINANCE_SECRET_KEY not set")
+        logger.warning(
+            "BINANCE_API_KEY or BINANCE_SECRET_KEY not set. Private RPCs will fail."
+        )
 
-    server = grpc.aio.server()
+    interceptors = []
+    auth_token = args.auth_token or os.environ.get("CONNECTOR_AUTH_TOKEN")
+    if auth_token:
+        logger.info("Authentication enabled with shared token")
+        interceptors.append(AuthInterceptor(auth_token))
+
+    server = grpc.aio.server(interceptors=interceptors)
     connector = BinanceConnector(api_key, secret_key, args.exchange_type)
     exchange_pb2_grpc.add_ExchangeServiceServicer_to_server(connector, server)
 
@@ -36,14 +81,26 @@ async def serve():
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     health_servicer.set(
         "opensqt.market_maker.v1.ExchangeService",
-        health.health_pb2.HealthCheckResponse.SERVING,
+        health_pb2.HealthCheckResponse.SERVING,
     )
-    health_servicer.set("", health.health_pb2.HealthCheckResponse.SERVING)
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
 
-    listen_addr = f"[::]:{args.port}"
-    server.add_insecure_port(listen_addr)
+    listen_addr = f"{args.host}:{args.port}"
 
-    print(f"Starting Binance {args.exchange_type} connector on {listen_addr}")
+    if args.tls_cert and args.tls_key:
+        with open(args.tls_cert, "rb") as f:
+            cert = f.read()
+        with open(args.tls_key, "rb") as f:
+            key = f.read()
+        server_credentials = grpc.ssl_server_credentials([(key, cert)])
+        server.add_secure_port(listen_addr, server_credentials)
+        logger.info(f"Starting SECURE gRPC server on {listen_addr} (TLS enabled)")
+    else:
+        server.add_insecure_port(listen_addr)
+        logger.warning(f"Starting INSECURE gRPC server on {listen_addr} (No TLS)")
+        if args.host != "127.0.0.1":
+            logger.warning("⚠️  Server is exposed to the network without encryption!")
+
     await server.start()
 
     try:

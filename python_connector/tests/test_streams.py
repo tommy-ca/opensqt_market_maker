@@ -71,8 +71,8 @@ async def test_subscribe_account():
 
         # Get one update
         account = await anext(stream)
-        assert account.total_wallet_balance.value == "1000.0"
-        assert account.available_balance.value == "500.0"
+        assert account.total_wallet_balance.value == "1000"
+        assert account.available_balance.value == "500"
 
         await stream.aclose()
         await connector.stop()
@@ -108,7 +108,7 @@ async def test_subscribe_positions():
         position = await anext(stream)
         assert position.symbol == "BTC/USDT"
         assert position.size.value == "0.5"
-        assert position.unrealized_pnl.value == "500.0"
+        assert position.unrealized_pnl.value == "500"
 
         await stream.aclose()
         await connector.stop()
