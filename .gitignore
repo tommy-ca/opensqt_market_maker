@@ -1,66 +1,72 @@
-################################
-# Go 构建产物 / 二进制文件
-################################
-# go build 输出（当前目录）
-./opensqt_free
-./opensqt
-# 一般二进制可执行文件（无扩展名）
+# Secrets and credentials
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+config.yaml
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+log/
+*.log.*
+
+# Build artifacts
+/bin/
+/build/
+/dist/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+opensqt
+opensqt_free
 
-# 其它常见构建/缓存目录
-bin/
-dist/
-build/
-test/
-################################
-# 日志文件
-################################
-log/
-*.log
+# Test coverage
+coverage.out
+coverage.html
+*.test
 
-################################
-# 配置文件
-################################
-# 真实配置（包含密钥等）
-config.yaml
-
-# 如果以后有本地覆盖配置，也可以加：
-# config.local.yaml
-
-# Environment files with credentials
-.env
-.env.local
-.env.*.local
-
-################################
-# Go 相关忽略
-################################
-# go module 缓存
-vendor/
-
-# IDE / 编辑器文件
-.vscode/
+# IDE files
 .idea/
+.vscode/
+*.swp
+*.swo
 *.iml
-
-# 系统文件
+*~
 .DS_Store
-Thumbs.db
 
-################################
-# Python 相关忽略
-################################
+# Dependencies
+/vendor/
+node_modules/
+venv/
+.venv/
+
+# Python cache
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.venv/
-venv/
 
+# Temporary files
+/tmp/
+*.tmp
+*.bak
 
-opensqt
+# OS files
+Thumbs.db
+.Trash-*

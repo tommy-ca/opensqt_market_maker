@@ -175,6 +175,46 @@ The system supports Unified Margin (UM) for Bybit, Binance, and OKX.
 ./market_maker --config config.yaml
 ```
 
+## 📊 观测性与监控 (Observability & Monitoring)
+
+系统内置了 Prometheus 指标导出器和增强的健康检查接口。
+
+### 1. Prometheus 指标 (Prometheus Metrics)
+系统默认在 `9090` 端口导出指标：
+- **PnL**: `market_maker_pnl_realized_total`, `market_maker_pnl_unrealized`
+- **仓位**: `market_maker_position_size`
+- **订单**: `market_maker_orders_active`, `market_maker_orders_placed_total`, `market_maker_orders_filled_total`
+- **延迟**: `market_maker_latency_exchange_ms`, `market_maker_latency_tick_to_trade_ms`
+
+**Prometheus 配置示例**:
+```yaml
+scrape_configs:
+  - job_name: 'market_maker'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+```
+
+### 2. 健康检查 (Health Check)
+增强的健康检查接口位于 `8080` 端口：
+- **Endpoint**: `GET /health`
+- **响应格式**: JSON，包含关键业务指标和各组件运行状态。
+
+```json
+{
+  "status": "ok",
+  "metrics": {
+    "active_orders": {"BTCUSDT": 5},
+    "unrealized_pnl": {"BTCUSDT": 12.5},
+    "position_size": {"BTCUSDT": 0.1}
+  },
+  "components": {
+    "exchange": "Healthy",
+    "risk_monitor": "Healthy"
+  }
+}
+```
+
 ## ⚠️ 免责声明 (Disclaimer)
 
 本软件仅供学习和研究使用。加密货币交易具有极高风险，可能导致资金损失。
