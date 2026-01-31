@@ -19,24 +19,45 @@ logger = logging.getLogger("connector")
 
 
 class AuthInterceptor(grpc.aio.ServerInterceptor):
-    def __init__(self, token: str):
+    def __init__(self, token: str, mandatory: bool = True):
         self._token = token
+        self._mandatory = mandatory
 
     async def intercept_service(self, continuation, handler_call_details):
-        # Allow health checks without auth if needed, or enforce everywhere
-        # For simplicity, enforce everywhere
+        # Allow health checks without auth
+        if handler_call_details.method.endswith(
+            "/Check"
+        ) or handler_call_details.method.endswith("/Watch"):
+            return await continuation(handler_call_details)
+
         metadatas = dict(handler_call_details.invocation_metadata)
-        if metadatas.get("authorization") != f"Bearer {self._token}":
-            return self._abort_unauthenticated()
+        auth_header = metadatas.get("authorization")
+
+        if not self._token and not self._mandatory:
+            return await continuation(handler_call_details)
+
+        if auth_header != f"Bearer {self._token}":
+            return self._abort_unauthenticated(handler_call_details)
+
         return await continuation(handler_call_details)
 
-    def _abort_unauthenticated(self):
+    def _abort_unauthenticated(self, handler_call_details):
         async def abort_handler(request, context):
             await context.abort(
                 grpc.StatusCode.UNAUTHENTICATED, "Invalid or missing auth token"
             )
 
-        return grpc.unary_unary_rpc_method_handler(abort_handler)
+        if (
+            handler_call_details.request_streaming
+            and handler_call_details.response_streaming
+        ):
+            return grpc.stream_stream_rpc_method_handler(abort_handler)
+        elif handler_call_details.request_streaming:
+            return grpc.stream_unary_rpc_method_handler(abort_handler)
+        elif handler_call_details.response_streaming:
+            return grpc.unary_stream_rpc_method_handler(abort_handler)
+        else:
+            return grpc.unary_unary_rpc_method_handler(abort_handler)
 
 
 async def serve():
@@ -70,7 +91,17 @@ async def serve():
     auth_token = args.auth_token or os.environ.get("CONNECTOR_AUTH_TOKEN")
     if auth_token:
         logger.info("Authentication enabled with shared token")
-        interceptors.append(AuthInterceptor(auth_token))
+        interceptors.append(AuthInterceptor(auth_token, mandatory=True))
+    else:
+        if args.host != "127.0.0.1":
+            logger.critical(
+                "❌ ERROR: Auth token is REQUIRED when binding to non-loopback address!"
+            )
+            return
+        logger.warning(
+            "⚠️  Running without authentication on loopback. Use only for local development."
+        )
+        interceptors.append(AuthInterceptor("", mandatory=False))
 
     server = grpc.aio.server(interceptors=interceptors)
     connector = BinanceConnector(api_key, secret_key, args.exchange_type)
