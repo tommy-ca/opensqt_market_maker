@@ -49,12 +49,10 @@ This phase ensures the Python gRPC Connector (`exchange_connector`) reaches full
 
 ### 3.3 Proto Regeneration
 
-- **Synchronization**: Copied `market_maker/api/proto/opensqt/market_maker/v1/exchange.proto` and `models.proto` to `python_connector/proto/`.
-- **Generation**: Ran `buf generate` (via `make proto`) which updated `python_connector/opensqt/market_maker/v1/`.
+- **Synchronization**: Copied `market_maker/api/proto/opensqt/market_maker/v1/exchange.proto` and `models.proto` to `python-connector/proto/`.
+- **Generation**: Ran `buf generate` (via `make proto`) which updated `python-connector/opensqt/market_maker/v1/`.
+- **Unit Tests**: `python-connector/tests/test_batch_ops.py` and `python-connector/tests/test_streams.py` verify new functionality using `unittest.mock` and `pytest-asyncio`.
 
-## 4. Testing
-
-- **Unit Tests**: `python_connector/tests/test_batch_ops.py` and `python_connector/tests/test_streams.py` verify new functionality using `unittest.mock` and `pytest-asyncio`.
 - **Existing Tests**: Verified `test_binance_connector.py` still passes.
 
 ## 5. Deployment

@@ -16,15 +16,15 @@ build:
 
 test:
 	cd market_maker && $(MAKE) test
-	uv run pytest -m "not integration" python_connector/tests
+	cd python-connector && uv run pytest -m "not integration" tests
 
 test-all:
 	cd market_maker && $(MAKE) test
-	uv run pytest python_connector/tests
+	cd python-connector && uv run pytest tests
 
 lint:
 	cd market_maker && $(MAKE) audit
-	uv run ruff check .
+	cd python-connector && uv run ruff check .
 
 proto:
 	cd market_maker && $(MAKE) proto

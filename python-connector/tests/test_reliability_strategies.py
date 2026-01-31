@@ -1,7 +1,6 @@
 import pytest
 import grpc
 import asyncio
-from unittest.mock import MagicMock
 from src.connector.errors import _get_grpc_context, handle_ccxt_exception
 
 

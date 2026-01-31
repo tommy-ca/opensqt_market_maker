@@ -38,5 +38,5 @@ Implement a helper function `_get_context` that checks `kwargs` and then scans `
 **Actions:**
 - Refactored `handle_ccxt_exception` to use `_get_context` helper.
 - Implemented robust context detection in `_get_context`.
-- Added unit tests in `python_connector/tests/test_errors_robustness.py`.
+- Added unit tests in `python-connector/tests/test_errors_robustness.py`.
 - Verified fix with new tests.

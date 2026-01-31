@@ -140,7 +140,7 @@ This document tracks the modernization, productionization, and enhancement of th
 
 **Objective**: Centralize and standardize Protocol Buffer management using the `buf` CLI for both Go and Python, ensuring consistent generation, linting, and breaking change detection.
 
-- [x] **Cleanup**: Remove redundant `.proto` copies in `python_connector/proto/` and rely on centralized `market_maker/api/proto/`.
+- [x] **Cleanup**: Remove redundant `.proto` copies in `python-connector/proto/` and rely on centralized `market_maker/api/proto/`.
 - [x] **Buf Configuration**: Verify and refine `market_maker/buf.yaml` and `market_maker/buf.gen.yaml` to fully support Python generation.
 - [x] **Linting & Breaking Changes**: Add `buf lint` and `buf breaking` steps to the `Makefile` and CI pipeline.
 - [x] **Automation**: Ensure `make proto` updates both Go and Python generated code correctly.
@@ -211,12 +211,12 @@ This document tracks the modernization, productionization, and enhancement of th
 
 **Objective**: Refine execution performance, minimize leg risk, and simplify the selection algorithm for production robustness based on Phase 28.1-28.5 audit.
 
-- [ ] **Parallel Scanning**: Refactor `UniverseSelector` to use a worker pool for historical data fetching to avoid IO bottlenecks.
-- [ ] **Simplified Scoring**: Implement "Three Pillars" (Yield, Risk, Maturity) score in `float64` for faster, more intuitive ranking.
-- [ ] **Atomic Neutrality**: Modify `ExecuteSpotPerpEntry` to dynamically scale the Perp leg based on the Spot `ExecutedQty` to handle partial fills.
-- [ ] **Parallel Execution**: Implement concurrent order placement for both legs in the `ArbitrageEngine` to minimize hedge slippage.
-- [ ] **Basis Stop (BaR)**: Add risk trigger to exit if Spot-Perp basis flips negative for 3+ intervals (Toxic Funding Guard).
-- [ ] **Metrics Dashboard**: Export `DeltaNeutrality` and `QualityScore` components to Prometheus for real-time monitoring.
+- [x] **Parallel Scanning**: Refactor `UniverseSelector` to use a worker pool for historical data fetching to avoid IO bottlenecks.
+- [x] **Simplified Scoring**: Implement "Three Pillars" (Yield, Risk, Maturity) score in `float64` for faster, more intuitive ranking.
+- [x] **Atomic Neutrality**: Modify `ExecuteSpotPerpEntry` to dynamically scale the Perp leg based on the Spot `ExecutedQty` to handle partial fills.
+- [x] **Parallel Execution**: Implement concurrent order placement for both legs in the `ArbitrageEngine` to minimize hedge slippage.
+- [x] **Basis Stop (BaR)**: Add risk trigger to exit if Spot-Perp basis flips negative for 3+ intervals (Toxic Funding Guard).
+- [x] **Metrics Dashboard**: Export `DeltaNeutrality` and `QualityScore` components to Prometheus for real-time monitoring.
 
 ## Phase 28.1: Universe Selector Liquidity Filters (CURRENT 🚧)
 

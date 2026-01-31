@@ -1,11 +1,10 @@
----
-module: python_connector
+module: python-connector
 date: 2026-01-30
 problem_type:
   - security
   - architecture
   - data_integrity
-component: python_connector
+component: python-connector
 symptoms:
   - plaintext gRPC
   - batch side-effects
@@ -101,7 +100,9 @@ Consolidated protos in `market_maker/api/proto` and used `google.type.Decimal` f
 - **Unified Generation**: Use a centralized `Makefile` or `buf` command to generate all language bindings from the same source files.
 - **Credential Scrutiny**: Add `*.pem` to all `.gitignore` files and use pre-commit hooks to scan for accidentally tracked secrets.
 - **Numerical Precision**: Always use string-backed `Decimal` types for exchange values; avoid `float` conversions entirely.
+- **Async Resource Management**: Always use `try...finally` blocks or context managers to ensure background tasks and connections are closed, even on error.
 
 ## Related Issues
 - **See also**: `docs/solutions/architecture-patterns/multi-pair-portfolio-arbitrage-unified-margin-support.md`
 - **See also**: `docs/best_practices/arbitrage_margin_prevention.md`
+- **See also**: `docs/best_practices/python-connector-prevention.md`

@@ -26,7 +26,7 @@ The Python connector MUST map CCXT exceptions to the following gRPC status codes
 ## 3. Implementation Procedure (TDD Flow)
 
 ### 3.1 RED Phase
-1.  Create `python_connector/tests/test_error_mapping.py`.
+1.  Create `python-connector/tests/test_error_mapping.py`.
 2.  Mock CCXT exceptions and verify that current implementation returns `UNKNOWN` or crashes.
 
 ### 3.2 GREEN Phase

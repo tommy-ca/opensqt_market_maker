@@ -1,12 +1,10 @@
 import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock
 import ccxt
 from opensqt.market_maker.v1 import exchange_pb2, types_pb2
 from opensqt.market_maker.v1 import resources_pb2 as models_pb2
 from google.type import decimal_pb2
 from src.connector.binance import BinanceConnector
-import grpc
 
 
 @pytest.fixture

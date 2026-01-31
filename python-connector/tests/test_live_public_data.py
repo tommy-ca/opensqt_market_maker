@@ -18,7 +18,6 @@ async def test_public_market_data():
     # but a real gRPC test over loopback is better.
 
     from src.connector.binance import BinanceConnector
-    from concurrent import futures
 
     # Start gRPC server on a random port
     server = grpc.aio.server()

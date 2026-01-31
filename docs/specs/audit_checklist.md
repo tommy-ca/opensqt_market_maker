@@ -31,7 +31,7 @@ This checklist tracks the systematic review of exchange connectors, Protobuf def
 - [ ] `cd market_maker && make audit` passes (`go fmt`, `go vet`, `staticcheck`).
 - [ ] `govulncheck` runs; if blocked locally (e.g., HTTP 403), record it and ensure CI runs it with network access.
 
-## 3. Python Connectors (`python_connector/src/connector/`)
+## 3. Python Connectors (`python-connector/src/connector/`)
 
 - [ ] **Logic Alignment**: Python logic for `PlaceOrder`, `CancelOrder`, etc., matches the Go implementation exactly.
 - [ ] **CCXT Integration**:

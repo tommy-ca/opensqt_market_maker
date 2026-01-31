@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch
 from src.connector.binance import BinanceConnector
 from opensqt.market_maker.v1 import exchange_pb2
@@ -75,7 +74,7 @@ async def test_batch_place_orders():
         assert len(response.orders) == 2
         assert response.orders[0].client_order_id == "c1"
         assert response.orders[1].client_order_id == "c2"
-        assert response.all_success == True
+        assert response.all_success
 
         mock_instance.create_orders.assert_called_once()
         await connector.stop()

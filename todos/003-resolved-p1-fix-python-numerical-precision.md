@@ -10,7 +10,7 @@ dependencies: []
 The Python connector for Binance is using `float()` for quantity and price conversions, which can lead to numerical precision issues. Financial applications should use `decimal.Decimal` or strings to avoid floating-point errors.
 
 # Findings
-- `python_connector/src/connector/binance.py` (lines 96, 98, 144, 146) converts `decimal_pb2.Decimal` values to `float`.
+- `python-connector/src/connector/binance.py` (lines 96, 98, 144, 146) converts `decimal_pb2.Decimal` values to `float`.
 - Floating point math can introduce tiny errors (e.g., 0.1 + 0.2 != 0.3) which cause order rejection or incorrect sizing on exchanges.
 
 # Proposed Solutions
@@ -32,4 +32,4 @@ Refactor `BinanceConnector` to use `decimal.Decimal` for all internal calculatio
 
 ### 2026-01-29 - Refactored to use Decimal
 **By:** Antigravity (pr-comment-resolver)
-**Actions:** Refactored `BinanceConnector` to use `Decimal` for all calculations and pass strings to CCXT. Added `python_connector/tests/test_precision.py`.
+**Actions:** Refactored `BinanceConnector` to use `Decimal` for all calculations and pass strings to CCXT. Added `python-connector/tests/test_precision.py`.

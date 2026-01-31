@@ -1,6 +1,5 @@
 import pytest
 import ccxt
-import grpc
 from unittest.mock import AsyncMock
 from src.connector.binance import BinanceConnector
 from opensqt.market_maker.v1 import resources_pb2 as models_pb2, types_pb2

@@ -10,7 +10,7 @@ dependencies: []
 The `handle_ccxt_exception` decorator currently only binds the gRPC context if it's passed as the last positional argument (`args[-1]`). This breaks if the context is passed as a keyword argument or if it's not the last argument in the signature.
 
 # Findings
-- `handle_ccxt_exception` in `python_connector/src/connector/decorators.py` (assumed path) uses `context = args[-1]` if `isinstance(args[-1], grpc.ServicerContext)`.
+- `handle_ccxt_exception` in `python-connector/src/connector/errors.py` uses `_get_grpc_context`.
 - Many gRPC methods are called with keyword arguments or have signatures where `context` is not at the end.
 
 # Proposed Solutions

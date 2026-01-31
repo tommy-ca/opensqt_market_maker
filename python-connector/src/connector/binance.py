@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import AsyncIterator, List, Optional, Union
+from typing import Union
 
 import ccxt
 import ccxt.async_support as ccxt_async
