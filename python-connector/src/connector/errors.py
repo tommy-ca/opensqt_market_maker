@@ -1,14 +1,21 @@
 import asyncio
+import functools
+import inspect
+import logging
+from collections.abc import Callable
+from typing import Any, TypeVar
+
 import ccxt
 import grpc
-import functools
-import logging
-import inspect
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-def _get_grpc_context(func, args, kwargs):
+
+def _get_grpc_context(
+    func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> grpc.aio.ServicerContext | None:
     """Robustly find the gRPC context in the arguments."""
     # 1. Check keyword arguments
     if "context" in kwargs:
@@ -31,7 +38,7 @@ def _get_grpc_context(func, args, kwargs):
     return None
 
 
-EXCEPTION_MAP = [
+EXCEPTION_MAP: list[tuple[type[Exception], grpc.StatusCode]] = [
     (ccxt.InsufficientFunds, grpc.StatusCode.RESOURCE_EXHAUSTED),
     (ccxt.OrderNotFound, grpc.StatusCode.NOT_FOUND),
     (ccxt.DuplicateOrderId, grpc.StatusCode.ALREADY_EXISTS),
@@ -45,14 +52,12 @@ EXCEPTION_MAP = [
 ]
 
 
-def handle_ccxt_exception(func):
+def handle_ccxt_exception(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except Exception as e:
-            # Avoid re-wrapping if it's already a gRPC error from a nested call
-            # but usually we want to map CCXT specifically.
             if isinstance(e, asyncio.CancelledError):
                 raise
 
@@ -65,10 +70,13 @@ def handle_ccxt_exception(func):
                     break
 
             if status_code == grpc.StatusCode.UNKNOWN:
-                logger.exception(f"Unhandled exception in {func.__name__}: {e}")
+                logger.exception("Unhandled exception in %s: %s", func.__name__, e)
             else:
                 logger.warning(
-                    f"CCXT exception in {func.__name__} mapped to {status_code}: {e}"
+                    "CCXT exception in %s mapped to %s: %s",
+                    func.__name__,
+                    status_code,
+                    e,
                 )
 
             if context:
@@ -80,10 +88,12 @@ def handle_ccxt_exception(func):
     return wrapper
 
 
-def retry_transient(max_retries=3, initial_backoff=0.1):
-    def decorator(func):
+def retry_transient(
+    max_retries: int = 3, initial_backoff: float = 0.1
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             backoff = initial_backoff
             for attempt in range(max_retries + 1):
                 try:
@@ -97,7 +107,12 @@ def retry_transient(max_retries=3, initial_backoff=0.1):
                         raise
 
                     logger.warning(
-                        f"Transient error in {func.__name__} (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {backoff}s..."
+                        "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs...",
+                        func.__name__,
+                        attempt + 1,
+                        max_retries + 1,
+                        e,
+                        backoff,
                     )
                     await asyncio.sleep(backoff)
                     backoff *= 2  # Exponential backoff

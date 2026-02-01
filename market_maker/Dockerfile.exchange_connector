@@ -1,0 +1,45 @@
+# Stage 1: Build
+FROM golang:1.25-bookworm AS builder
+
+WORKDIR /app
+
+# Copy workspace and modules
+COPY go.work ./
+COPY market_maker/go.mod market_maker/go.sum ./market_maker/
+RUN cd market_maker && go mod download
+
+# Copy source
+COPY market_maker/ ./market_maker/
+
+# Build exchange_connector binary
+RUN cd market_maker && \
+    CGO_ENABLED=1 GOOS=linux go build -o /app/bin/exchange_connector cmd/exchange_connector/main.go
+
+# Stage 2: Runtime
+FROM debian:bookworm-slim
+
+# Install grpc_health_probe and ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && wget -qO/usr/local/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.24/grpc_health_probe-linux-amd64 \
+    && chmod +x /usr/local/bin/grpc_health_probe
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/bin/exchange_connector ./bin/
+
+# Default config directory
+RUN mkdir -p /app/configs
+
+# Default environment variables
+ENV LOG_LEVEL=INFO
+ENV CONFIG_FILE=/app/configs/config.yaml
+ENV PORT=50051
+
+# Expose gRPC port
+EXPOSE 50051
+
+ENTRYPOINT ["./bin/exchange_connector"]

@@ -2,6 +2,8 @@ import argparse
 import asyncio
 import logging
 import os
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -18,11 +20,17 @@ logger = logging.getLogger("connector")
 
 
 class AuthInterceptor(grpc.aio.ServerInterceptor):
-    def __init__(self, token: str, mandatory: bool = True):
+    def __init__(self, token: str, mandatory: bool = True) -> None:
         self._token = token
         self._mandatory = mandatory
 
-    async def intercept_service(self, continuation, handler_call_details):
+    async def intercept_service(
+        self,
+        continuation: Callable[
+            [grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler]
+        ],
+        handler_call_details: grpc.HandlerCallDetails,
+    ) -> grpc.RpcMethodHandler:
         # Allow health checks without auth
         if handler_call_details.method.endswith(
             "/Check"
@@ -40,26 +48,31 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
 
         return await continuation(handler_call_details)
 
-    def _abort_unauthenticated(self, handler_call_details):
-        async def abort_handler(request, context):
+    def _abort_unauthenticated(
+        self, handler_call_details: grpc.HandlerCallDetails
+    ) -> grpc.RpcMethodHandler:
+        async def abort_handler(
+            request: Any, context: grpc.aio.ServicerContext
+        ) -> None:
             await context.abort(
                 grpc.StatusCode.UNAUTHENTICATED, "Invalid or missing auth token"
             )
 
-        if (
-            handler_call_details.request_streaming
-            and handler_call_details.response_streaming
-        ):
+        is_request_streaming = getattr(handler_call_details, "request_streaming", False)
+        is_response_streaming = getattr(
+            handler_call_details, "response_streaming", False
+        )
+
+        if is_request_streaming and is_response_streaming:
             return grpc.stream_stream_rpc_method_handler(abort_handler)
-        elif handler_call_details.request_streaming:
+        if is_request_streaming:
             return grpc.stream_unary_rpc_method_handler(abort_handler)
-        elif handler_call_details.response_streaming:
+        if is_response_streaming:
             return grpc.unary_stream_rpc_method_handler(abort_handler)
-        else:
-            return grpc.unary_unary_rpc_method_handler(abort_handler)
+        return grpc.unary_unary_rpc_method_handler(abort_handler)
 
 
-async def serve():
+async def serve() -> None:
     parser = argparse.ArgumentParser(description="Binance gRPC Connector (Python)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=50051, help="gRPC server port")
@@ -89,6 +102,11 @@ async def serve():
     interceptors = []
     auth_token = args.auth_token or os.environ.get("CONNECTOR_AUTH_TOKEN")
     if auth_token:
+        if not (args.tls_cert and args.tls_key) and args.host != "127.0.0.1":
+            logger.critical(
+                "❌ ERROR: TLS is REQUIRED when using authentication on non-loopback address!"
+            )
+            return
         logger.info("Authentication enabled with shared token")
         interceptors.append(AuthInterceptor(auth_token, mandatory=True))
     else:
@@ -124,10 +142,10 @@ async def serve():
             key = f.read()
         server_credentials = grpc.ssl_server_credentials([(key, cert)])
         server.add_secure_port(listen_addr, server_credentials)
-        logger.info(f"Starting SECURE gRPC server on {listen_addr} (TLS enabled)")
+        logger.info("Starting SECURE gRPC server on %s (TLS enabled)", listen_addr)
     else:
         server.add_insecure_port(listen_addr)
-        logger.warning(f"Starting INSECURE gRPC server on {listen_addr} (No TLS)")
+        logger.warning("Starting INSECURE gRPC server on %s (No TLS)", listen_addr)
         if args.host != "127.0.0.1":
             logger.warning("⚠️  Server is exposed to the network without encryption!")
 
