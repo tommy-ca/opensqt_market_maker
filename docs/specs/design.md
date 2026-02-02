@@ -677,3 +677,11 @@ The repository uses the `pre-commit` framework to enforce standards at the time 
 - **Go**: Validated via `golangci-lint` and `go-mod-tidy`.
 - **Python**: Validated via `ruff`.
 - **General**: YAML validation and whitespace enforcement.
+
+### 7.3 Workspace Maintenance
+The `scripts/audit_branches.sh` tool helps developers maintain a clean local environment by identifying branches that have been merged or squashed.
+- **Merge Detection**: Identifies branches that are direct ancestors of main.
+- **Squash Detection**: Uses tree hash comparison to find branches that were squash-merged.
+- **Safety**: Read-only tool that provides a report of 'active', 'merged', or 'squashed' status.
+
+## 8. Future Roadmap

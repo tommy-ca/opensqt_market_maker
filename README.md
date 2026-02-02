@@ -74,6 +74,9 @@ uvx pre-commit install
 - **Python**: `ruff` 检查与格式化
 - **通用**: 结尾空格、文件末尾换行、YAML 语法检查
 
+### 3. Utility Scripts
+- **Branch Audit**: Run `scripts/audit_branches.sh` to check which local branches have been merged or squashed and can be safely deleted.
+
 ## 🚀 快速开始 (Getting Started)
 
 ### 1. 安装依赖 (Installation)

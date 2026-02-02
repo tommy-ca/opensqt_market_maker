@@ -63,6 +63,7 @@ This document tracks the modernization, productionization, and enhancement of th
 
 - [x] **Archiving**: Move legacy prototypes to `archive/legacy/`.
 - [x] **Script Consolidation**: Centralize scripts in `market_maker/scripts/`.
+    - Added `scripts/audit_branches.sh` for git workflow hygiene.
 - [x] **Race Condition Audit**: Run `go test -race ./...` and fix any data races. ✅ Clean
 - [x] **Security Audit**: Scan for secrets and verify credential isolation. ✅ Verified
 - [x] **Code Coverage Audit**: Verify test coverage for critical risk and position logic. ✅ 100% Pass
