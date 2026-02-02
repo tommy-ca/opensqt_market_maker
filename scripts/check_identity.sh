@@ -2,44 +2,30 @@
 set -euo pipefail
 
 # check_identity.sh
-# Verifies that git user.name and user.email are not set to default/generic values.
-# Adapted from scripts/audit_commit_authors.sh
+# Verifies that the EFFECTIVE git author/email are not generic defaults.
+
+# Get effective identity (respects env vars and config)
+# git var GIT_AUTHOR_IDENT returns format: "Name <email> timestamp tz"
+IDENT_STRING=$(git var GIT_AUTHOR_IDENT)
+
+# Extract Name (everything before the last <)
+AUTHOR_NAME=$(echo "$IDENT_STRING" | sed -r 's/ <.*//')
+# Extract Email (between < and >)
+AUTHOR_EMAIL=$(echo "$IDENT_STRING" | sed -r 's/.*<(.*)> .*/\1/')
 
 # Patterns to match (case insensitive grep)
-# - Your Name (Default git template)
-# - you@example.com (Default git template)
-# - root@localhost (System default)
-# - ubuntu@ip- (AWS/Cloud init default)
 PATTERNS="Your Name|you@example.com|root@localhost|ubuntu@ip-"
-
-AUTHOR_NAME=$(git config user.name || echo "")
-AUTHOR_EMAIL=$(git config user.email || echo "")
 
 FAILED=false
 
-if [[ -z "$AUTHOR_NAME" ]]; then
-    echo "❌ Error: git user.name is not set."
+# Use printf to avoid echo flag injection
+if printf "%s" "$AUTHOR_NAME" | grep -qEi "$PATTERNS"; then
+    echo "❌ Error: Author name '$AUTHOR_NAME' is a generic default."
     FAILED=true
 fi
 
-if [[ -z "$AUTHOR_EMAIL" ]]; then
-    echo "❌ Error: git user.email is not set."
-    FAILED=true
-fi
-
-if [[ "$FAILED" = true ]]; then
-    exit 1
-fi
-
-if echo "$AUTHOR_NAME" | grep -qEi "$PATTERNS"; then
-    echo "❌ Error: git user.name '$AUTHOR_NAME' is a generic default."
-    echo "   Please set it using: git config user.name 'Your Real Name'"
-    FAILED=true
-fi
-
-if echo "$AUTHOR_EMAIL" | grep -qEi "$PATTERNS"; then
-    echo "❌ Error: git user.email '$AUTHOR_EMAIL' is a generic default."
-    echo "   Please set it using: git config user.email 'you@yourdomain.com'"
+if printf "%s" "$AUTHOR_EMAIL" | grep -qEi "$PATTERNS"; then
+    echo "❌ Error: Author email '$AUTHOR_EMAIL' is a generic default."
     FAILED=true
 fi
 
