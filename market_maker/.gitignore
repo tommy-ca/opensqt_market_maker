@@ -1,0 +1,17 @@
+# Local configuration and secrets
+.env
+config.yaml
+certs/*.pem
+certs/*.crt
+certs/*.key
+
+# Database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Build artifacts
+/bin/
+market_maker
+arbitrage_bot
+*.test

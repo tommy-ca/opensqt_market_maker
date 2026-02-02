@@ -1,0 +1,94 @@
+# Live Server Configuration
+# Standalone monitoring binary for real-time trading visualization
+
+# App configuration
+app:
+  # PRODUCTION: Use "remote" to connect via gRPC exchange_connector service
+  # DEVELOPMENT: Use exchange name directly (binance, bitget, gate, okx, bybit)
+  current_exchange: "remote"
+
+# Exchange configurations
+exchanges:
+  # gRPC Exchange Connector (RECOMMENDED for production)
+  remote:
+    base_url: "localhost:50051"  # exchange_connector gRPC address
+    # No API keys needed - exchange_connector handles authentication
+  
+  # Native Exchange Connectors (for development/testing only)
+  # WARNING: Direct native usage violates gRPC architecture for production
+  binance:
+    api_key: "${BINANCE_API_KEY}"       # Can use env vars
+    secret_key: "${BINANCE_SECRET_KEY}"
+    testnet: false
+    
+  bitget:
+    api_key: "${BITGET_API_KEY}"
+    secret_key: "${BITGET_SECRET_KEY}"
+    passphrase: "${BITGET_PASSPHRASE}"
+    testnet: false
+    
+  gate:
+    api_key: "${GATE_API_KEY}"
+    secret_key: "${GATE_SECRET_KEY}"
+    testnet: false
+    
+  okx:
+    api_key: "${OKX_API_KEY}"
+    secret_key: "${OKX_SECRET_KEY}"
+    passphrase: "${OKX_PASSPHRASE}"
+    testnet: false
+    
+  bybit:
+    api_key: "${BYBIT_API_KEY}"
+    secret_key: "${BYBIT_SECRET_KEY}"
+    testnet: false
+
+# Trading symbol to monitor
+trading:
+  symbol: "BTCUSDT"           # Trading pair
+  interval: "1m"               # Kline interval (1m, 5m, 15m, 1h, etc.)
+  historical_limit: 100        # Number of historical candles to load
+
+# Server configuration
+server:
+  port: ":8081"               # HTTP/WebSocket server port
+  enable_cors: true           # Enable CORS for web browsers
+  allowed_origins:            # WebSocket allowed origins (whitelist for security)
+    - "http://localhost:3000"
+    - "http://localhost:8081"
+    - "http://127.0.0.1:3000"
+    - "http://127.0.0.1:8081"
+    # SECURITY: Remove wildcard "*" in production
+    # - "*"                   # Allow all (UNSAFE - dev/testing only)
+  
+  # Optional authentication (disabled by default)
+  enable_auth: false
+  jwt_secret: "${JWT_SECRET}"
+  api_keys:
+    - "${API_KEY_1}"
+    - "${API_KEY_2}"
+
+# Static files
+web:
+  directory: "web"            # Directory for static files (live.html, coin.mp3)
+  
+# Logging
+logging:
+  level: "INFO"               # DEBUG, INFO, WARN, ERROR
+  format: "text"              # text or json
+  output: "stdout"            # stdout, stderr, or file path
+
+# Performance tuning
+performance:
+  max_clients: 100            # Maximum concurrent WebSocket clients
+  broadcast_buffer: 256       # Broadcast channel buffer size
+  client_buffer: 256          # Per-client message buffer
+  ping_interval: 54           # Ping interval in seconds
+  pong_timeout: 60            # Pong timeout in seconds
+  read_timeout: 60            # WebSocket read timeout
+  write_timeout: 10           # WebSocket write timeout
+  
+# Health check
+health:
+  enabled: true               # Enable /health endpoint
+  endpoint: "/health"         # Health check path
