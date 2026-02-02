@@ -1,0 +1,23 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      value: market_maker/internal/pb
+    - file_option: go_package
+      module: buf.build/googleapis/googleapis
+      value: google.golang.org/genproto/googleapis/type/decimal;decimal
+    - file_option: go_package
+      module: buf.build/grpc/grpc
+      value: google.golang.org/grpc/health/grpc_health_v1;health
+plugins:
+  - local: protoc-gen-go
+    out: ..
+  - local: protoc-gen-go-grpc
+    out: ..
+  - remote: buf.build/protocolbuffers/python
+    out: ../python-connector
+  - remote: buf.build/grpc/python
+    out: ../python-connector
+inputs:
+  - directory: api/proto

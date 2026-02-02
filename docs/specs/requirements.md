@@ -1,8 +1,27 @@
 # Requirements Specification
 
-## 1. Exchange Connector System
+## 1. Dual-Language Architecture (New)
 
-### 1.1 Overview
+The project is structured as a dual-language workspace to leverage the strengths of both Go and Python:
+
+- **Go Components (`market_maker/`)**: High-performance trading engine, gRPC server, and durable execution (DBOS).
+- **Python Components (`python-connector/`)**: Flexible exchange adapters, data science integrations, and rapid prototyping of connectors.
+...
+- **REQ-ARB-019**: All platforms (Go/Python) MUST run full test gates post-implementation: `make audit`, `make test` in Go tree, and pytest suite in `python-connector` (ensure pytest available in CI/runtime).
+
+- **REQ-ARB-020**: Python connector MUST consume regenerated protos from the canonical `market_maker/api/proto` bundle (no stale `proto/*.py`); tests must use `resources_pb2` + `types_pb2` for `PlaceOrderRequest` and enums.
+- **REQ-ARB-021**: pytest-asyncio (or equivalent) MUST be configured for Python async tests; collection failures on async defs are test gate blockers.
+
+### 1.10 Metrics & Risk (REQ-METRICS-*)
+- **REQ-METRICS-001**: Emit staleness/lag metrics for price/order/funding/position feeds; fundings must have staleness alarms.
+- **REQ-METRICS-002**: Track funding spread/APR, exposure (spot/perp/net), margin ratio, liquidation distance, retries/failures, and hedge slippage with low-cardinality labels.
+- **REQ-METRICS-003**: Define circuit-break actions for stale feeds, high retries, unsafe margin/liquidation distance; grid/arbitrage engines must honor these breakers.
+- **REQ-METRICS-004**: Metrics must avoid high-cardinality labels (no raw URLs/symbol lists); use bounded enums for streams, reasons, and legs.
+- **REQ-METRICS-005**: Funding staleness over threshold or missing-leg spread MUST pause arbitrage entries; position stream staleness MUST trigger safety policy (freeze or exit per strategy config).
+
+## 2. Exchange Connector System
+
+### 2.1 Overview
 The Exchange Connector system acts as a bridge between the central trading engine and external crypto exchanges via **gRPC-based architecture**.
 
 **CRITICAL ARCHITECTURAL REQUIREMENT**: Both `market_maker` and `live_server` binaries MUST communicate with exchanges through the `exchange_connector` gRPC service. Direct native connector usage violates the documented architecture.
@@ -48,10 +67,12 @@ The Exchange Connector system acts as a bridge between the central trading engin
 ### 1.3 Technical Constraints
 - **Performance**: Latency added by the gRPC layer should be < 5ms.
 - **Precision**: All monetary values use `shopspring/decimal` (Go) to avoid floating-point errors.
+- **Idempotency (REQ-WF-001)**: All order placement operations MUST be idempotent via `client_order_id`. Connectors MUST handle "Duplicate Order ID" by verifying existing state.
+- **Retry Policy (REQ-WF-002)**: Standardized exponential backoff (e.g., 3 attempts, 100ms initial) for transient network and rate limit errors.
 - **Protocol Management**:
     - Communication strictly adheres to `market_maker/api/proto/v1/exchange.proto`.
     - **Buf CLI**: All Protobuf management must be performed via the `buf` CLI.
-- **Error Handling**: Standardized `apperrors` mapping.
+- **Error Handling (REQ-ERR-001)**: Standardized `apperrors` mapping. All exchange connectors (Go & Python) MUST map native exchange errors (e.g., CCXT exceptions) to consistent gRPC status codes and internal error types to ensure deterministic workflow behavior.
 
 ## 2. Core Trading Logic
 
@@ -1042,3 +1063,27 @@ Phase 17 focuses on validating the Non-Functional Requirements (NFRs) of the gRP
     - Code formatting (gofmt, ruff)
     - Static analysis (go vet, golangci-lint)
     - Basic sanity checks (trailing whitespace, EOF fixing).
+
+## 10. Funding & Arbitrage (REQ-FUND-*, REQ-ARB-*)
+
+### 10.1 Funding Data Model
+- **REQ-FUND-001**: `FundingRate` / `FundingUpdate` timestamps (`timestamp`, `next_funding_time`) MUST use Unix epoch milliseconds (UTC).
+- **REQ-FUND-002**: `next_funding_time` set to `0` means "not applicable" (e.g., for spot exchanges).
+- **REQ-FUND-003**: `predicted_rate` is optional and SHOULD be unset if the exchange does not provide it.
+- **REQ-FUND-004**: Spot connectors MUST return `rate=0`, `next_funding_time=0`, and a valid `timestamp` (receipt time).
+
+### 10.2 Arbitrage Workflows
+- **REQ-ARB-001**: Strategy decisions MUST use the **funding spread** (Short Leg Rate - Long Leg Rate) and actual interval to compute APR.
+- **REQ-ARB-002**: Entries MUST be blocked if any leg's funding feed is missing or stale beyond the configured threshold.
+- **REQ-ARB-003**: Workflows MUST be idempotent using deterministic `client_order_id` (e.g., including `next_funding_time` or a unique workflow attempt ID).
+- **REQ-ARB-004**: Compensation and exit leg sizes MUST be derived from actual executed quantities of previous legs, not requested quantities.
+- **REQ-ARB-005**: Only one entry or exit workflow per symbol SHOULD be in-flight at any time to avoid race conditions and double-spending.
+- **REQ-ARB-006**: System MUST support bidirectional funding arbitrage:
+    - **Positive Funding (Perp Pays)**: Long Spot + Short Perp.
+    - **Negative Funding (Perp Receives)**: Short Spot (Margin Borrow) + Long Perp.
+- **REQ-ARB-007**: System MUST support spot margin for the spot leg of the arbitrage when necessary (e.g., for shorting).
+
+### 10.3 Metrics & Risk
+- **REQ-METRICS-001**: System MUST monitor feed staleness and stream lag for all real-time data (price, funding, orders, positions).
+- **REQ-METRICS-002**: Circuit breakers MUST trip on stale funding feeds, unsafe margin ratios, or high liquidation risk.
+- **REQ-METRICS-003**: Metrics labels MUST be low-cardinality to ensure Prometheus performance.
