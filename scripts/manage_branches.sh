@@ -72,10 +72,10 @@ TARGET_TREE_HISTORY=$(git log -n "$TARGET_DEPTH" --format='%T' "$TARGET")
 
 # --- 2. Audit Phase ---
 # We accumulate results in arrays to allow for JSON output or Interactive Cleanup
-declare -a BRANCHES
-declare -a STATUSES
-declare -a DATES
-declare -a AUTHORS
+BRANCHES=()
+STATUSES=()
+DATES=()
+AUTHORS=()
 
 # Safe delimiter: 0x1F (Unit Separator)
 SEP=$(printf "\x1F")
