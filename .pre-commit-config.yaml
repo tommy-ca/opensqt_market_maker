@@ -30,9 +30,9 @@ repos:
     rev: v0.1.9
     hooks:
       - id: ruff
-        name: ruff (python_connector)
+        name: ruff (python-connector)
         args: [ --fix, --exit-non-zero-on-fix ]
-        files: ^python_connector/
+        files: ^python-connector/
       - id: ruff-format
-        name: ruff-format (python_connector)
-        files: ^python_connector/
+        name: ruff-format (python-connector)
+        files: ^python-connector/

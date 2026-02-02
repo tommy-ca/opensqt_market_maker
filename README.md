@@ -98,9 +98,69 @@ go build -o market_maker cmd/market_maker/main.go
 
 ### 3. 配置 (Configuration)
 
-编辑 `config.yaml`，配置 API 密钥与策略参数。
+#### API 密钥配置 (API Credentials Setup)
 
-### 4. 运行 (Usage)
+本系统使用环境变量存储敏感的 API 密钥，确保安全性。请按以下步骤配置：
+
+**步骤 1**: 复制环境变量模板
+```bash
+cd market_maker
+cp .env.example .env
+```
+
+**步骤 2**: 编辑 `.env` 文件，填入真实的 API 密钥
+```bash
+# Binance API Credentials
+BINANCE_API_KEY=your_actual_binance_api_key
+BINANCE_SECRET_KEY=your_actual_binance_secret_key
+
+# OKX API Credentials
+OKX_API_KEY=your_actual_okx_api_key
+OKX_SECRET_KEY=your_actual_okx_secret_key
+OKX_PASSPHRASE=your_actual_okx_passphrase
+
+# Bybit API Credentials
+BYBIT_API_KEY=your_actual_bybit_api_key
+BYBIT_SECRET_KEY=your_actual_bybit_secret_key
+```
+
+**步骤 3**: 在运行程序前加载环境变量
+```bash
+# 方法 1: 使用 source (Linux/Mac)
+source .env
+
+# 方法 2: 使用 export
+export $(cat .env | xargs)
+
+# 方法 3: 使用 direnv (推荐用于开发)
+# 安装 direnv: https://direnv.net/
+echo "dotenv" > .envrc
+direnv allow
+```
+
+**重要安全提示**:
+- `.env` 文件已在 `.gitignore` 中配置，不会被提交到版本控制
+- 切勿将真实的 API 密钥提交到 Git 仓库
+- 定期轮换 API 密钥，遵循最佳安全实践
+- 为 API 密钥设置适当的权限（仅交易权限，禁用提现）
+
+#### 策略参数配置 (Strategy Parameters)
+
+编辑 `configs/config.yaml` 配置交易策略参数（注意：API 密钥通过环境变量加载，无需在此文件中配置）。
+
+### 4. 统一保证金 (Unified Margin)
+
+本系统支持 Bybit UTA, Binance Portfolio Margin 和 OKX 统一账户。
+- **高资金效率**: 自动对冲现货与合约盈亏，减少保证金需求。
+- **风险提示**: 即使开启 Unified Margin，强烈建议为做市商策略使用**独立的子账户 (Sub-account)**。
+- **自动减仓**: 系统在账户 Health Score 低于 0.7 时会自动减仓 50%，低于 0.5 时会触发全仓退出。
+
+The system supports Unified Margin (UM) for Bybit, Binance, and OKX.
+- **Capital Efficiency**: Automatically offsets Spot/Perp PnL.
+- **Safety**: Using **dedicated sub-accounts** is strongly recommended.
+- **De-leveraging**: Auto-reduces exposure by 50% at 0.7 health score and exits at 0.5.
+
+### 5. 运行 (Usage)
 
 #### 启动交易所连接器 (Start Connectors)
 
@@ -116,6 +176,46 @@ go build -o market_maker cmd/market_maker/main.go
 
 ```bash
 ./market_maker --config config.yaml
+```
+
+## 📊 观测性与监控 (Observability & Monitoring)
+
+系统内置了 Prometheus 指标导出器和增强的健康检查接口。
+
+### 1. Prometheus 指标 (Prometheus Metrics)
+系统默认在 `9090` 端口导出指标：
+- **PnL**: `market_maker_pnl_realized_total`, `market_maker_pnl_unrealized`
+- **仓位**: `market_maker_position_size`
+- **订单**: `market_maker_orders_active`, `market_maker_orders_placed_total`, `market_maker_orders_filled_total`
+- **延迟**: `market_maker_latency_exchange_ms`, `market_maker_latency_tick_to_trade_ms`
+
+**Prometheus 配置示例**:
+```yaml
+scrape_configs:
+  - job_name: 'market_maker'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+```
+
+### 2. 健康检查 (Health Check)
+增强的健康检查接口位于 `8080` 端口：
+- **Endpoint**: `GET /health`
+- **响应格式**: JSON，包含关键业务指标和各组件运行状态。
+
+```json
+{
+  "status": "ok",
+  "metrics": {
+    "active_orders": {"BTCUSDT": 5},
+    "unrealized_pnl": {"BTCUSDT": 12.5},
+    "position_size": {"BTCUSDT": 0.1}
+  },
+  "components": {
+    "exchange": "Healthy",
+    "risk_monitor": "Healthy"
+  }
+}
 ```
 
 ## ⚠️ 免责声明 (Disclaimer)
