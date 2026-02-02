@@ -1,8 +1,8 @@
 <div align="center">
   <img src="https://r2.opensqt.com/opensqt_logo.png" alt="OpenSQT Logo" width="600"/>
-  
+
   # OpenSQT Market Maker
-  
+
   **毫秒级高频加密货币做市商系统 | High-Frequency Crypto Market Maker**
 
   [![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue.svg)](https://golang.org/dl/)
@@ -75,7 +75,11 @@ uvx pre-commit install
 - **通用**: 结尾空格、文件末尾换行、YAML 语法检查
 
 ### 3. Utility Scripts
-- **Branch Audit**: Run `scripts/audit_branches.sh` to check which local branches have been merged or squashed and can be safely deleted.
+- **Branch Management**: Run `scripts/manage_branches.sh` to audit and interactively delete merged local branches.
+  - `--delete`: Interactive cleanup.
+  - `--delete --force`: Silent cleanup (for agents).
+- **Identity Check**: Run `scripts/audit_commit_authors.sh` to check for generic commit identities in history.
+- **Identity Enforcement**: Run `pre-commit install` to prevent future commits with generic identities.
 
 ## 🚀 快速开始 (Getting Started)
 
