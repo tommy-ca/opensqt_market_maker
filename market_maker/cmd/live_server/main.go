@@ -170,9 +170,14 @@ func createExchange(liveConfig *Config, logger core.ILogger) (pkgexchange.Exchan
 	// Copy exchange configurations
 	for name, exchCfg := range liveConfig.Exchanges {
 		internalConfig.Exchanges[name] = config.ExchangeConfig{
-			APIKey:     exchCfg.APIKey,
-			SecretKey:  exchCfg.SecretKey,
-			Passphrase: exchCfg.Passphrase,
+			APIKey:        exchCfg.APIKey,
+			SecretKey:     exchCfg.SecretKey,
+			Passphrase:    exchCfg.Passphrase,
+			BaseURL:       exchCfg.BaseURL,
+			FeeRate:       exchCfg.FeeRate,
+			TLSCertFile:   exchCfg.TLSCertFile,
+			TLSServerName: exchCfg.TLSServerName,
+			GRPCAPIKey:    exchCfg.GRPCAPIKey,
 		}
 	}
 

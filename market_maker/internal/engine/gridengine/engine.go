@@ -15,7 +15,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// GridEngine is a lean orchestrator for grid trading
+// GridEngine is a lean orchestrator for grid trading using declarative reconciliation
 type GridEngine struct {
 	exchanges map[string]core.IExchange
 	executor  core.IOrderExecutor
@@ -24,7 +24,7 @@ type GridEngine struct {
 	logger    core.ILogger
 
 	// Building Blocks
-	strategy    *grid.Strategy
+	strategy    *grid.GridStrategy
 	slotManager core.IPositionManager
 
 	// State
@@ -50,6 +50,7 @@ func NewGridEngine(
 ) engine.Engine {
 	strategyCfg := grid.StrategyConfig{
 		Symbol:              cfg.Symbol,
+		Exchange:            cfg.Exchange,
 		PriceInterval:       cfg.PriceInterval,
 		OrderQuantity:       cfg.OrderQuantity,
 		MinOrderValue:       cfg.MinOrderValue,
@@ -68,7 +69,7 @@ func NewGridEngine(
 		monitor:     monitor,
 		store:       store,
 		logger:      logger.WithField("component", "grid_engine"),
-		strategy:    grid.NewStrategy(strategyCfg),
+		strategy:    grid.NewGridStrategy(strategyCfg),
 		slotManager: slotMgr,
 		execPool:    execPool,
 	}
@@ -113,37 +114,100 @@ func (e *GridEngine) OnPriceUpdate(ctx context.Context, price *pb.PriceChange) e
 	}
 
 	// 2. Handle Risk Transition
-	if isTriggeredNow && !e.isRiskTriggered {
-		e.logger.Warn("Risk Triggered! Canceling all Buy orders")
-		actions, _ := e.slotManager.CancelAllBuyOrders(ctx)
-		e.execute(ctx, actions)
-	}
 	e.isRiskTriggered = isTriggeredNow
 
-	// 3. Calculate Actions
-	// Convert SlotManager's complex slots to simple Strategy slots
+	// 3. Calculate Target State
+	levels := e.getGridLevels()
+	target, err := e.strategy.CalculateTargetState(ctx, pVal, e.anchorPrice, atr, volFactor, isTriggeredNow, false, levels)
+	if err != nil {
+		return err
+	}
+
+	// 4. Reconcile
+	actions := e.reconcile(target)
+
+	// 5. Execute Actions
+	e.execute(ctx, actions)
+
+	// 6. Save State
+	e.saveState(ctx, pVal)
+
+	return nil
+}
+
+func (e *GridEngine) getGridLevels() []grid.GridLevel {
 	mgrSlots := e.slotManager.GetSlots()
-	stratSlots := make([]grid.Slot, 0, len(mgrSlots))
+	levels := make([]grid.GridLevel, 0, len(mgrSlots))
 	for _, s := range mgrSlots {
-		stratSlots = append(stratSlots, grid.Slot{
+		levels = append(levels, grid.GridLevel{
 			Price:          pbu.ToGoDecimal(s.Price),
 			PositionStatus: s.PositionStatus,
 			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
 			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
+			OrderID:        s.OrderId,
 		})
 	}
+	return levels
+}
 
-	actions := e.strategy.CalculateActions(pVal, e.anchorPrice, atr, volFactor, isTriggeredNow, stratSlots)
+func (e *GridEngine) reconcile(target *core.TargetState) []*pb.OrderAction {
+	var actions []*pb.OrderAction
 
-	// 4. Execute Actions
-	e.execute(ctx, actions)
+	// Index existing active orders by ClientOrderID
+	activeOrders := make(map[string]*core.InventorySlot)
+	for _, s := range e.slotManager.GetSlots() {
+		if s.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED && s.ClientOid != "" {
+			activeOrders[s.ClientOid] = s
+		}
+	}
 
-	// 5. Save State
-	e.saveState(ctx, pVal)
+	// 1. Find orders to Place or Keep
+	desiredOids := make(map[string]bool)
+	for _, to := range target.Orders {
+		desiredOids[to.ClientOrderID] = true
 
-	return nil
+		if _, exists := activeOrders[to.ClientOrderID]; !exists {
+			// PLACE missing order
+			actions = append(actions, &pb.OrderAction{
+				Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+				Price: pbu.FromGoDecimal(to.Price),
+				Request: &pb.PlaceOrderRequest{
+					Symbol:        to.Symbol,
+					Side:          e.mapSide(to.Side),
+					Type:          pb.OrderType_ORDER_TYPE_LIMIT,
+					Quantity:      pbu.FromGoDecimal(to.Quantity),
+					Price:         pbu.FromGoDecimal(to.Price),
+					ClientOrderId: to.ClientOrderID,
+					ReduceOnly:    to.ReduceOnly,
+					PostOnly:      to.PostOnly,
+					TimeInForce:   pb.TimeInForce_TIME_IN_FORCE_GTC,
+				},
+			})
+		}
+	}
+
+	// 2. Find orders to Cancel (active but not desired)
+	for oid, s := range activeOrders {
+		if !desiredOids[oid] {
+			actions = append(actions, &pb.OrderAction{
+				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL,
+				Symbol:  e.strategy.GetSymbol(),
+				OrderId: s.OrderId,
+				Price:   s.Price,
+			})
+		}
+	}
+
+	return actions
+}
+
+func (e *GridEngine) mapSide(side string) pb.OrderSide {
+	if side == "BUY" {
+		return pb.OrderSide_ORDER_SIDE_BUY
+	}
+	return pb.OrderSide_ORDER_SIDE_SELL
 }
 
 func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
@@ -184,8 +248,6 @@ func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
 		}
 	}
 
-	// In SimpleEngine we should wait for results to apply them atomically
-	// This is slightly blocking but ensures state consistency in procedural loop
 	wg.Wait()
 	_ = e.slotManager.ApplyActionResults(results)
 }

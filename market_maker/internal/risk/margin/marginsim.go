@@ -1,4 +1,4 @@
-package portfolio
+package margin
 
 import (
 	"market_maker/internal/core"

@@ -23,15 +23,19 @@ import (
 )
 
 type RemoteExchange struct {
-	conn         *grpc.ClientConn
-	client       pb.ExchangeServiceClient
-	healthClient grpc_health_v1.HealthClient
-	logger       core.ILogger
-	name         string
-	exType       pb.ExchangeType
-	isUnified    bool
-	reconciler   Reconciler // Optional reconciler for state validation
-	apiKey       string     // API key for authentication
+	conn          *grpc.ClientConn
+	client        pb.ExchangeServiceClient
+	healthClient  grpc_health_v1.HealthClient
+	logger        core.ILogger
+	name          string
+	exType        pb.ExchangeType
+	isUnified     bool
+	reconciler    Reconciler // Optional reconciler for state validation
+	apiKey        string     // API key for authentication
+	priceDecimals int
+	qtyDecimals   int
+	baseAsset     string
+	quoteAsset    string
 }
 
 // Reconciler interface for triggering reconciliation after stream reconnection
@@ -503,7 +507,23 @@ func (r *RemoteExchange) GetHistoricalKlines(ctx context.Context, symbol string,
 func (r *RemoteExchange) FetchExchangeInfo(ctx context.Context, symbol string) error {
 	ctx = r.addAuthMetadata(ctx)
 	_, err := r.client.FetchExchangeInfo(ctx, &pb.FetchExchangeInfoRequest{Symbol: symbol})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Fetch detailed info to populate decimals
+	info, err := r.client.GetSymbolInfo(ctx, &pb.GetSymbolInfoRequest{Symbol: symbol})
+	if err != nil {
+		r.logger.Warn("Failed to fetch symbol info after exchange info sync", "symbol", symbol, "error", err)
+		return nil // Non-fatal
+	}
+
+	r.priceDecimals = int(info.PricePrecision)
+	r.qtyDecimals = int(info.QuantityPrecision)
+	r.baseAsset = info.BaseAsset
+	r.quoteAsset = info.QuoteAsset
+
+	return nil
 }
 
 func (r *RemoteExchange) GetSymbolInfo(ctx context.Context, symbol string) (*pb.SymbolInfo, error) {
@@ -521,20 +541,19 @@ func (r *RemoteExchange) GetSymbols(ctx context.Context) ([]string, error) {
 }
 
 func (r *RemoteExchange) GetPriceDecimals() int {
-
-	return 2
+	return r.priceDecimals
 }
 
 func (r *RemoteExchange) GetQuantityDecimals() int {
-	return 3
+	return r.qtyDecimals
 }
 
 func (r *RemoteExchange) GetBaseAsset() string {
-	return "BTC"
+	return r.baseAsset
 }
 
 func (r *RemoteExchange) GetQuoteAsset() string {
-	return "USDT"
+	return r.quoteAsset
 }
 
 func (r *RemoteExchange) GetFundingRate(ctx context.Context, symbol string) (*pb.FundingRate, error) {

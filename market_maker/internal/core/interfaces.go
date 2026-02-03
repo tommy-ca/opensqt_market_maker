@@ -94,9 +94,18 @@ type IFundingMonitor interface {
 	Subscribe(exchange, symbol string) <-chan *pb.FundingUpdate
 }
 
-// IStrategy defines the interface for trading strategy logic
+// IStrategy defines the interface for trading strategy logic using declarative reconciliation
 type IStrategy interface {
-	CalculateActions(ctx context.Context, slots map[string]*InventorySlot, anchorPrice decimal.Decimal, currentPrice decimal.Decimal) ([]*pb.OrderAction, error)
+	CalculateTargetState(
+		ctx context.Context,
+		currentPrice decimal.Decimal,
+		anchorPrice decimal.Decimal,
+		atr decimal.Decimal,
+		volatilityFactor float64,
+		isRiskTriggered bool,
+		isCircuitTripped bool,
+		state any,
+	) (*TargetState, error)
 }
 
 // IPositionManager defines the interface for position management

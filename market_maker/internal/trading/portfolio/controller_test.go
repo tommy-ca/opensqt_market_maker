@@ -6,12 +6,12 @@ import (
 	"market_maker/internal/core"
 	"market_maker/internal/engine"
 	"market_maker/internal/pb"
+	"market_maker/internal/risk/margin"
 	"market_maker/internal/trading/arbitrage"
 	"market_maker/pkg/pbu"
 	"testing"
 	"time"
 
-	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -98,23 +98,15 @@ func (m *mockScanner) CreateConfig(symbol string, notional decimal.Decimal) (jso
 	return args.Get(0).(json.RawMessage), args.Error(1)
 }
 
-type mockDBOSContext struct {
-	dbos.DBOSContext
-}
-
-func (m *mockDBOSContext) RunAsStep(ctx dbos.DBOSContext, fn dbos.StepFunc, opts ...dbos.StepOption) (any, error) {
-	return fn(context.Background())
-}
-
 func TestPortfolioController_Rebalance(t *testing.T) {
 	// Setup
 	selector := new(mockScanner)
 	allocator := NewPortfolioAllocator()
-	marginSim := NewMarginSim()
+	marginSim := margin.NewMarginSim()
 	orch := new(mockOrchestrator)
 	logger := new(mockLogger)
 
-	controller := NewPortfolioController(selector, allocator, marginSim, orch, logger, time.Hour)
+	controller := NewPortfolioController(nil, selector, allocator, marginSim, orch, logger, time.Hour)
 
 	// Mock Opportunity
 	opps := []arbitrage.Opportunity{
