@@ -22,7 +22,7 @@ func NewArbitrageWorkflows(exchanges map[string]core.IExchange) *ArbitrageWorkfl
 }
 
 // ExecuteSpotPerpEntry executes a delta-neutral entry (Spot Buy + Perp Sell)
-// Input: *ArbitrageEntryRequest
+// Hardened with IOC and immediate fill scaling.
 func (w *ArbitrageWorkflows) ExecuteSpotPerpEntry(ctx dbos.DBOSContext, input any) (any, error) {
 	req := input.(*pb.ArbitrageEntryRequest)
 
@@ -35,123 +35,104 @@ func (w *ArbitrageWorkflows) ExecuteSpotPerpEntry(ctx dbos.DBOSContext, input an
 		return nil, fmt.Errorf("perp exchange %s not found", req.PerpExchange)
 	}
 
-	// Step 1: Place Spot Buy
+	// Step 1: Place Spot Order (Enforce IOC/FOK for atomic fill knowledge)
+	req.SpotOrder.TimeInForce = pb.TimeInForce_TIME_IN_FORCE_IOC
+
 	spotOrderRaw, err := ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
 		return spotEx.PlaceOrder(ctx, req.SpotOrder)
 	})
 	if err != nil {
-		// Failed to place spot order, abort (nothing to unwind)
 		return nil, fmt.Errorf("failed to place spot order: %w", err)
 	}
 	spotOrder := spotOrderRaw.(*pb.Order)
 
-	// Step 2: Place Perp Sell
-	// Align Perp quantity with actual Spot execution to maintain delta neutrality
-	perpReq := req.PerpOrder
-	if !pbu.ToGoDecimal(spotOrder.ExecutedQty).IsZero() {
-		perpReq.Quantity = spotOrder.ExecutedQty
+	// Step 2: Scale Perp leg based on actual Spot execution
+	spotQty := pbu.ToGoDecimal(spotOrder.ExecutedQty)
+	if spotQty.IsZero() {
+		return nil, fmt.Errorf("spot order not filled (IOC)")
 	}
+
+	perpReq := req.PerpOrder
+	perpReq.Quantity = spotOrder.ExecutedQty // Correctly scaled quantity
 
 	_, err = ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
 		return perpEx.PlaceOrder(ctx, perpReq)
 	})
 
 	if err != nil {
-		// Perp leg failed! We are now net long. Must unwind spot.
-		// Step 3: Compensation (Sell Spot)
-		// We execute this as a step to ensure it happens.
-		// Ideally this should be a "compensation" logic or separate workflow,
-		// but simple compensation step works for now.
-
-		// Use ExecutedQty from spot order for accurate unwind, fallback to requested qty
-		unwindQty := spotOrder.ExecutedQty
-		if pbu.ToGoDecimal(unwindQty).IsZero() {
-			unwindQty = req.SpotOrder.Quantity
-		}
-
-		// Compensation: Unwind spot leg
-		unwindSide := pb.OrderSide_ORDER_SIDE_SELL
-		if req.SpotOrder.Side == pb.OrderSide_ORDER_SIDE_SELL {
-			unwindSide = pb.OrderSide_ORDER_SIDE_BUY
-		}
-
+		// Step 3: Compensation (Unwind partial spot)
 		_, unwindErr := ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
+			unwindSide := pb.OrderSide_ORDER_SIDE_SELL
+			if req.SpotOrder.Side == pb.OrderSide_ORDER_SIDE_SELL {
+				unwindSide = pb.OrderSide_ORDER_SIDE_BUY
+			}
 			unwindReq := &pb.PlaceOrderRequest{
 				Symbol:        spotOrder.Symbol,
 				Side:          unwindSide,
 				Type:          pb.OrderType_ORDER_TYPE_MARKET,
-				Quantity:      unwindQty,
+				Quantity:      spotOrder.ExecutedQty,
 				ClientOrderId: fmt.Sprintf("unwind_%s", spotOrder.ClientOrderId),
 			}
 			return spotEx.PlaceOrder(ctx, unwindReq)
 		})
 
 		if unwindErr != nil {
-			// Critical failure: Stuck with open leg.
-			// Log critical error / Alert
-			return nil, fmt.Errorf("CRITICAL: Failed to unwind spot position after perp failure: %v (Original error: %v)", unwindErr, err)
+			return nil, fmt.Errorf("CRITICAL: Failed to unwind spot position: %v (Original: %v)", unwindErr, err)
 		}
-
-		return nil, fmt.Errorf("perp leg failed, unwound spot position: %w", err)
+		return nil, fmt.Errorf("perp leg failed, unwound spot: %w", err)
 	}
 
 	return nil, nil
 }
 
 // ExecuteSpotPerpExit executes a delta-neutral exit (Spot Sell + Perp Buy)
-// Input: *ArbitrageExitRequest
+// Hardened with concurrent closures via sub-workflows.
 func (w *ArbitrageWorkflows) ExecuteSpotPerpExit(ctx dbos.DBOSContext, input any) (any, error) {
 	req := input.(*pb.ArbitrageExitRequest)
 
-	spotEx, ok := w.exchanges[req.SpotExchange]
-	if !ok {
-		return nil, fmt.Errorf("spot exchange %s not found", req.SpotExchange)
-	}
-	perpEx, ok := w.exchanges[req.PerpExchange]
-	if !ok {
-		return nil, fmt.Errorf("perp exchange %s not found", req.PerpExchange)
-	}
+	// To achieve atomic parallel exits while maintaining durability,
+	// we launch two independent sub-workflows.
 
-	// Exit Logic: Close both legs. Order doesn't matter as much as Entry, but usually safer to close Perp (Leverage) first?
-	// Or Spot first to secure realized PnL?
-	// Let's close Perp first (Buy to Cover) then Spot (Sell).
-	// Ideally we do this concurrently, but DBOS steps are sequential?
-	// Actually we can launch goroutines inside a step, but standard DBOS pattern is sequential steps.
-	// Sequential is safer for state tracking.
-
-	// Step 1: Close Perp (Buy)
-	perpOrderRaw, err := ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
-		return perpEx.PlaceOrder(ctx, req.PerpOrder)
+	h1, err := ctx.RunWorkflow(ctx, w.ExecuteSingleLegExit, &SingleLegReq{
+		Exchange: req.SpotExchange,
+		Order:    req.SpotOrder,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to close perp position: %w", err)
-	}
-	perpOrder := perpOrderRaw.(*pb.Order)
-
-	// Step 2: Close Spot (Sell)
-	// Align Spot quantity with actual Perp execution
-	spotReq := req.SpotOrder
-	if !pbu.ToGoDecimal(perpOrder.ExecutedQty).IsZero() {
-		spotReq.Quantity = perpOrder.ExecutedQty
+		return nil, err
 	}
 
-	_, err = ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
-		return spotEx.PlaceOrder(ctx, spotReq)
+	h2, err := ctx.RunWorkflow(ctx, w.ExecuteSingleLegExit, &SingleLegReq{
+		Exchange: req.PerpExchange,
+		Order:    req.PerpOrder,
 	})
-
 	if err != nil {
-		// Spot sell failed! We closed the hedge but still hold the asset.
-		// We are now net Long delta (holding Spot).
-		// Risk: Price drops.
-		// Remediation: Retry Spot Sell? Or Re-open Perp?
-		// Usually we want to exit, so we should retry Spot Sell.
-		// Since we can't easily retry indefinitely here, we return error and rely on manual intervention or upper layer retry.
-		// Or we can try one compensation: Re-open Perp (Short) to re-hedge?
-		// No, if we are exiting, we likely want out. Retrying spot sell is better.
-		// For now, fail and log.
+		return nil, err
+	}
 
-		return nil, fmt.Errorf("CRITICAL: Failed to close spot position after closing perp: %w", err)
+	// Wait for both to finish
+	_, err1 := h1.GetResult()
+	_, err2 := h2.GetResult()
+
+	if err1 != nil || err2 != nil {
+		return nil, fmt.Errorf("one or both exit legs failed: spot=%v, perp=%v", err1, err2)
 	}
 
 	return nil, nil
+}
+
+type SingleLegReq struct {
+	Exchange string
+	Order    *pb.PlaceOrderRequest
+}
+
+func (w *ArbitrageWorkflows) ExecuteSingleLegExit(ctx dbos.DBOSContext, input any) (any, error) {
+	req := input.(*SingleLegReq)
+	ex, ok := w.exchanges[req.Exchange]
+	if !ok {
+		return nil, fmt.Errorf("exchange %s not found", req.Exchange)
+	}
+
+	return ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
+		return ex.PlaceOrder(ctx, req.Order)
+	})
 }

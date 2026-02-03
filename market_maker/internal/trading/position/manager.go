@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/grid"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
@@ -60,7 +61,6 @@ type SuperPositionManager struct {
 	anchorPrice decimal.Decimal
 
 	// State tracking
-	insufficientMargin bool
 	marginLockUntil    int64 // atomic timestamp
 	marginLockDuration time.Duration
 
@@ -348,35 +348,121 @@ func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPr
 	slots := spm.slots
 	spm.mu.RUnlock()
 
-	actions, err := spm.strategy.CalculateActions(ctx, slots, anchorPrice, newPrice)
+	// 1. Prepare state for strategy (convert map to slice if needed, but GridStrategy wants levels)
+	// We need to pass the current slots to the strategy.
+	// Since IStrategy is generic, we pass what it expects.
+	// For GridStrategy, it's []grid.GridLevel.
+
+	levels := make([]grid.GridLevel, 0, len(slots))
+	for _, s := range slots {
+		s.Mu.RLock()
+		levels = append(levels, grid.GridLevel{
+			Price:          pbu.ToGoDecimal(s.Price),
+			PositionStatus: s.PositionStatus,
+			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
+			OrderID:        s.OrderId,
+		})
+		s.Mu.RUnlock()
+	}
+
+	atr := decimal.Zero
+	volFactor := 0.0
+	isRiskTriggered := false
+	if spm.riskMonitor != nil {
+		atr = spm.riskMonitor.GetATR(spm.symbol)
+		volFactor = spm.riskMonitor.GetVolatilityFactor(spm.symbol)
+		isRiskTriggered = spm.riskMonitor.IsTriggered()
+	}
+
+	isCircuitTripped := false
+	if spm.circuitBreaker != nil {
+		isCircuitTripped = spm.circuitBreaker.IsTripped()
+	}
+
+	target, err := spm.strategy.CalculateTargetState(ctx, newPrice, anchorPrice, atr, volFactor, isRiskTriggered, isCircuitTripped, levels)
 	if err != nil {
 		return nil, err
 	}
 
-	// Post-processing: Ensure slots exist for any PLACE actions returned by strategy
-	spm.mu.Lock()
-	defer spm.mu.Unlock()
+	// 2. Reconcile TargetState to Actions
+	var actions []*pb.OrderAction
 
-	for _, action := range actions {
-		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			price := pbu.ToGoDecimal(action.Price)
+	// Index existing active orders by ClientOrderID
+	activeOrders := make(map[string]*core.InventorySlot)
+	for _, s := range slots {
+		s.Mu.RLock()
+		if s.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED && s.ClientOid != "" {
+			activeOrders[s.ClientOid] = s
+		}
+		s.Mu.RUnlock()
+	}
+
+	desiredOids := make(map[string]bool)
+
+	// Track slots to create/update
+	spm.mu.Lock()
+	for _, to := range target.Orders {
+		desiredOids[to.ClientOrderID] = true
+
+		if _, exists := activeOrders[to.ClientOrderID]; !exists {
+			// Ensure slot exists for this price
+			price := to.Price
 			slot := spm.getOrCreateSlotLocked(price)
 
-			// Proactively update slot state if it's a PLACE action
-			// This matches legacy behavior where slot became PENDING immediately
+			// Proactively update slot state to PENDING
 			slot.Mu.Lock()
-			if action.Request != nil {
-				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
-				slot.OrderPrice = action.Request.Price
-				slot.OrderSide = action.Request.Side
-				slot.ClientOid = action.Request.ClientOrderId
-				spm.clientOMap[slot.ClientOid] = slot
-			}
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+			slot.OrderPrice = pbu.FromGoDecimal(to.Price)
+			slot.OrderSide = spm.mapSide(to.Side)
+			slot.ClientOid = to.ClientOrderID
+			spm.clientOMap[slot.ClientOid] = slot
 			slot.Mu.Unlock()
+
+			// PLACE missing order
+			actions = append(actions, &pb.OrderAction{
+				Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+				Price: pbu.FromGoDecimal(to.Price),
+				Request: &pb.PlaceOrderRequest{
+					Symbol:        to.Symbol,
+					Side:          spm.mapSide(to.Side),
+					Type:          pb.OrderType_ORDER_TYPE_LIMIT,
+					Quantity:      pbu.FromGoDecimal(to.Quantity),
+					Price:         pbu.FromGoDecimal(to.Price),
+					ClientOrderId: to.ClientOrderID,
+					ReduceOnly:    to.ReduceOnly,
+					PostOnly:      to.PostOnly,
+					TimeInForce:   pb.TimeInForce_TIME_IN_FORCE_GTC,
+				},
+			})
+		}
+	}
+	spm.mu.Unlock()
+
+	// Find orders to Cancel
+	for oid, s := range activeOrders {
+		if !desiredOids[oid] {
+			s.Mu.RLock()
+			actions = append(actions, &pb.OrderAction{
+				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL,
+				Symbol:  spm.symbol,
+				OrderId: s.OrderId,
+				Price:   s.Price,
+			})
+			s.Mu.RUnlock()
 		}
 	}
 
 	return actions, nil
+}
+
+func (spm *SuperPositionManager) mapSide(side string) pb.OrderSide {
+	if side == "BUY" {
+		return pb.OrderSide_ORDER_SIDE_BUY
+	}
+	return pb.OrderSide_ORDER_SIDE_SELL
 }
 
 // ApplyActionResults updates the internal state based on the results of executed actions
@@ -888,11 +974,6 @@ func (spm *SuperPositionManager) handleOrderRejected(update *pb.OrderUpdate) {}
 
 func (spm *SuperPositionManager) isMarginLocked() bool {
 	return time.Now().UnixNano() < atomic.LoadInt64(&spm.marginLockUntil)
-}
-
-func (spm *SuperPositionManager) setMarginLock() {
-	atomic.StoreInt64(&spm.marginLockUntil, time.Now().Add(spm.marginLockDuration).UnixNano())
-	spm.insufficientMargin = true
 }
 
 // cleanupProcessedUpdates periodically removes old entries from the processedUpdates map

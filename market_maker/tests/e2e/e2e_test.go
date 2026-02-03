@@ -9,9 +9,9 @@ import (
 	"market_maker/internal/pb"
 	"market_maker/internal/risk"
 	"market_maker/internal/trading/backtest"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
@@ -49,13 +49,20 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 		exch, logger, []string{symbol}, "1m", 3.0, 20, 2, "All", nil,
 	)
 
-	gridStrategy := strategy.NewGridStrategy(
-		symbol, exch.GetName(),
-		decimal.NewFromFloat(cfg.Trading.PriceInterval),
-		decimal.NewFromFloat(cfg.Trading.OrderQuantity),
-		decimal.NewFromFloat(cfg.Trading.MinOrderValue),
-		5, 5, 2, 3, false, riskMonitor, nil, logger,
-	)
+	gridStrategy := grid.NewGridStrategy(grid.StrategyConfig{
+		Symbol:              symbol,
+		Exchange:            exch.GetName(),
+		PriceInterval:       decimal.NewFromFloat(cfg.Trading.PriceInterval),
+		OrderQuantity:       decimal.NewFromFloat(cfg.Trading.OrderQuantity),
+		MinOrderValue:       decimal.NewFromFloat(cfg.Trading.MinOrderValue),
+		BuyWindowSize:       5,
+		SellWindowSize:      5,
+		PriceDecimals:       2,
+		QtyDecimals:         3,
+		IsNeutral:           false,
+		VolatilityScale:     cfg.Trading.VolatilityScale,
+		InventorySkewFactor: cfg.Trading.InventorySkewFactor,
+	})
 
 	pm := position.NewSuperPositionManager(
 		symbol, exch.GetName(),

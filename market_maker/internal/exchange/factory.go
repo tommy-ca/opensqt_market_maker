@@ -38,12 +38,22 @@ func NewExchange(exchangeName string, cfg *config.Config, logger core.ILogger, p
 		if exchangeConfig.BaseURL == "" {
 			return nil, fmt.Errorf("base_url is required for remote exchange (e.g. localhost:50051)")
 		}
-		// Use TLS if certificate is configured, otherwise fall back to insecure
+		// Use TLS if certificate is configured
 		if exchangeConfig.TLSCertFile != "" {
 			logger.Info("Creating remote exchange with TLS",
 				"address", exchangeConfig.BaseURL,
 				"cert", exchangeConfig.TLSCertFile,
 				"server_name", exchangeConfig.TLSServerName)
+
+			if exchangeConfig.GRPCAPIKey != "" {
+				return NewRemoteExchangeWithTLSAndAuth(
+					exchangeConfig.BaseURL,
+					logger,
+					exchangeConfig.TLSCertFile,
+					exchangeConfig.TLSServerName,
+					exchangeConfig.GRPCAPIKey,
+				)
+			}
 			return NewRemoteExchangeWithTLS(
 				exchangeConfig.BaseURL,
 				logger,
@@ -51,7 +61,13 @@ func NewExchange(exchangeName string, cfg *config.Config, logger core.ILogger, p
 				exchangeConfig.TLSServerName,
 			)
 		}
-		logger.Warn("Creating remote exchange without TLS (insecure)")
+
+		if exchangeConfig.GRPCAPIKey != "" {
+			logger.Warn("Creating remote exchange with Auth but without TLS (insecure)", "address", exchangeConfig.BaseURL)
+			return NewRemoteExchangeWithAuth(exchangeConfig.BaseURL, logger, exchangeConfig.GRPCAPIKey)
+		}
+
+		logger.Warn("Creating remote exchange without TLS or Auth (insecure)", "address", exchangeConfig.BaseURL)
 		return NewRemoteExchange(exchangeConfig.BaseURL, logger)
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", exchangeName)

@@ -7,9 +7,9 @@ import (
 	"market_maker/internal/engine/durable"
 	"market_maker/internal/pb"
 	"market_maker/internal/trading/backtest"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
@@ -57,13 +57,18 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 
 	orderExecutor := order.NewOrderExecutor(exch, logger)
 
-	gridStrategy := strategy.NewGridStrategy(
-		symbol, exch.GetName(),
-		decimal.NewFromFloat(10.0),
-		decimal.NewFromFloat(100.0),
-		decimal.NewFromFloat(5.0),
-		5, 5, 2, 3, false, nil, nil, logger,
-	)
+	gridStrategy := grid.NewGridStrategy(grid.StrategyConfig{
+		Symbol:         symbol,
+		Exchange:       exch.GetName(),
+		PriceInterval:  decimal.NewFromFloat(10.0),
+		OrderQuantity:  decimal.NewFromFloat(100.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+		IsNeutral:      false,
+	})
 
 	pm := position.NewSuperPositionManager(
 		symbol, exch.GetName(),

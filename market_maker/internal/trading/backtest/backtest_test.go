@@ -4,9 +4,9 @@ import (
 	"context"
 	simple "market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"testing"
 	"time"
@@ -25,7 +25,18 @@ func TestBacktest_BasicFlow(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000) // Unlimited for backtest
 
 	// We'll use a nil risk monitor for simplicity in this test
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest", decimal.NewFromFloat(1.0), decimal.NewFromFloat(10.0), decimal.NewFromFloat(5.0), 5, 5, 2, 3, false, nil, nil, logger)
+	strat := grid.NewGridStrategy(grid.StrategyConfig{
+		Symbol:         "BTCUSDT",
+		Exchange:       "backtest",
+		PriceInterval:  decimal.NewFromFloat(1.0),
+		OrderQuantity:  decimal.NewFromFloat(10.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+		IsNeutral:      false,
+	})
 	pm := position.NewSuperPositionManager(
 		"BTCUSDT", "backtest", 1.0, 10.0, 5.0, 5, 5, 2, 3,
 		strat, nil, nil, logger, nil,
@@ -97,7 +108,18 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000)
 
 	// BuyWindow=5, SellWindow=5, Interval=10
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest", decimal.NewFromFloat(10.0), decimal.NewFromFloat(100.0), decimal.NewFromFloat(5.0), 5, 5, 2, 3, false, nil, nil, logger)
+	strat := grid.NewGridStrategy(grid.StrategyConfig{
+		Symbol:         "BTCUSDT",
+		Exchange:       "backtest",
+		PriceInterval:  decimal.NewFromFloat(10.0),
+		OrderQuantity:  decimal.NewFromFloat(100.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+		IsNeutral:      false,
+	})
 	pm := position.NewSuperPositionManager(
 		"BTCUSDT", "backtest", 10.0, 100.0, 5.0, 5, 5, 2, 3,
 		strat, nil, nil, logger, nil,

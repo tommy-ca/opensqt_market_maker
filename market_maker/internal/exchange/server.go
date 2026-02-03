@@ -5,14 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"market_maker/internal/auth"
+	"market_maker/internal/config"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	apperrors "market_maker/pkg/errors"
 	"market_maker/pkg/pbu"
 	"net"
+	"strings"
 
-	sdecimal "github.com/shopspring/decimal"
-	gdecimal "google.golang.org/genproto/googleapis/type/decimal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -78,81 +78,72 @@ func (s *ExchangeServer) mapError(err error) error {
 	return status.Error(codes.Unknown, err.Error())
 }
 
-func (s *ExchangeServer) Start(port int) error {
+// Serve starts the gRPC server with unified TLS, Auth, and Metadata propagation.
+func (s *ExchangeServer) Serve(port int, config *config.ExchangeConfig) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	var grpcServer *grpc.Server
-	if s.authValidator != nil {
-		// Create server with authentication interceptors
-		grpcServer = grpc.NewServer(
-			grpc.UnaryInterceptor(s.authValidator.UnaryServerInterceptor()),
-			grpc.StreamInterceptor(s.authValidator.StreamServerInterceptor()),
-		)
-		s.logger.Info("Starting exchange gRPC server with API key authentication (insecure transport)", "port", port)
+	var opts []grpc.ServerOption
+
+	// 1. Transparent TLS Enforcement
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		creds, err := credentials.NewServerTLSFromFile(config.TLSCertFile, config.TLSKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to load TLS credentials: %w", err)
+		}
+		opts = append(opts, grpc.Creds(creds))
+		s.logger.Info("TLS encryption enabled", "cert", config.TLSCertFile)
+	} else if string(config.GRPCAPIKeys) != "" || string(config.GRPCAPIKey) != "" {
+		// Enforce TLS if Auth is present (Secure Default)
+		return fmt.Errorf("refusing to start in INSECURE mode with Auth enabled. Configure TLS or remove API keys")
 	} else {
-		// Create server without authentication (backward compatibility)
-		grpcServer = grpc.NewServer()
-		s.logger.Warn("Starting exchange gRPC server WITHOUT authentication (insecure)", "port", port)
+		s.logger.Warn("Starting server in INSECURE mode (plaintext)")
 	}
 
+	// 2. Interceptor Chain (Auth)
+	// We'll add metadata propagation in a future iteration or if needed by specific middleware.
+	// For now, focus on Auth.
+	var unaryInterceptors []grpc.UnaryServerInterceptor
+	var streamInterceptors []grpc.StreamServerInterceptor
+
+	// Initialize auth validator if keys present
+	apiKeysStr := string(config.GRPCAPIKeys)
+	if apiKeysStr == "" {
+		apiKeysStr = string(config.GRPCAPIKey)
+	}
+
+	if apiKeysStr != "" {
+		keys := strings.Split(apiKeysStr, ",")
+		rateLimit := config.GRPCRateLimit
+		if rateLimit <= 0 {
+			rateLimit = 100 // Default
+		}
+		s.authValidator = auth.NewAPIKeyValidator(keys, rateLimit, s.logger)
+
+		unaryInterceptors = append(unaryInterceptors, s.authValidator.UnaryServerInterceptor())
+		streamInterceptors = append(streamInterceptors, s.authValidator.StreamServerInterceptor())
+		s.logger.Info("API key authentication enabled")
+	}
+
+	if len(unaryInterceptors) > 0 {
+		opts = append(opts,
+			grpc.ChainUnaryInterceptor(unaryInterceptors...),
+			grpc.ChainStreamInterceptor(streamInterceptors...),
+		)
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterExchangeServiceServer(grpcServer, s)
 
-	// Register health service (REQ-GRPC-001.4)
+	// Register health service
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-
-	// Mark overall server as serving
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-
-	// Mark ExchangeService as serving
 	healthServer.SetServingStatus("opensqt.market_maker.v1.ExchangeService", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	return grpcServer.Serve(lis)
-}
-
-// StartWithTLS starts the gRPC server with TLS encryption
-func (s *ExchangeServer) StartWithTLS(port int, certFile, keyFile string) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", port, err)
-	}
-
-	// Load TLS credentials
-	creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
-	if err != nil {
-		return fmt.Errorf("failed to load TLS keys from cert=%s, key=%s: %w", certFile, keyFile, err)
-	}
-
-	var grpcServer *grpc.Server
-	if s.authValidator != nil {
-		// Create server with TLS and authentication interceptors
-		grpcServer = grpc.NewServer(
-			grpc.Creds(creds),
-			grpc.UnaryInterceptor(s.authValidator.UnaryServerInterceptor()),
-			grpc.StreamInterceptor(s.authValidator.StreamServerInterceptor()),
-		)
-		s.logger.Info("Starting exchange gRPC server with TLS encryption and API key authentication", "port", port, "cert", certFile)
-	} else {
-		// Create server with TLS only (no authentication)
-		grpcServer = grpc.NewServer(grpc.Creds(creds))
-		s.logger.Warn("Starting exchange gRPC server with TLS but WITHOUT authentication", "port", port, "cert", certFile)
-	}
-
-	pb.RegisterExchangeServiceServer(grpcServer, s)
-
-	// Register health service (REQ-GRPC-001.4)
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-
-	// Mark overall server as serving
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-
-	// Mark ExchangeService as serving
-	healthServer.SetServingStatus("opensqt.market_maker.v1.ExchangeService", grpc_health_v1.HealthCheckResponse_SERVING)
-
+	s.logger.Info("Exchange gRPC server serving", "port", port)
 	return grpcServer.Serve(lis)
 }
 
@@ -468,14 +459,4 @@ func (s *ExchangeServer) SubscribePositions(req *pb.SubscribePositionsRequest, s
 	case err := <-errCh:
 		return err
 	}
-}
-
-// Helpers
-
-func (s *ExchangeServer) toPbDecimal(d sdecimal.Decimal) *gdecimal.Decimal {
-	return pbu.FromGoDecimal(d)
-}
-
-func (s *ExchangeServer) fromPbDecimal(d *gdecimal.Decimal) sdecimal.Decimal {
-	return pbu.ToGoDecimal(d)
 }

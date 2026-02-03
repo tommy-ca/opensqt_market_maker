@@ -1,6 +1,9 @@
 package grid
 
 import (
+	"context"
+	"fmt"
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/tradingutils"
@@ -8,19 +11,21 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Slot represents the data required by the strategy logic for a single grid level
-type Slot struct {
+// GridLevel represents the data required by the strategy logic for a single grid level
+type GridLevel struct {
 	Price          decimal.Decimal
 	PositionStatus pb.PositionStatus
 	PositionQty    decimal.Decimal
 	SlotStatus     pb.SlotStatus
 	OrderSide      pb.OrderSide
 	OrderPrice     decimal.Decimal
+	OrderID        int64
 }
 
 // StrategyConfig holds the parameters for the grid strategy
 type StrategyConfig struct {
 	Symbol              string
+	Exchange            string
 	PriceInterval       decimal.Decimal
 	OrderQuantity       decimal.Decimal
 	MinOrderValue       decimal.Decimal
@@ -33,17 +38,124 @@ type StrategyConfig struct {
 	InventorySkewFactor float64
 }
 
-// Strategy implements the pure logic for a trailing grid strategy
-type Strategy struct {
+// GridStrategy implements the pure logic for a trailing grid strategy
+type GridStrategy struct {
 	cfg StrategyConfig
 }
 
-func NewStrategy(cfg StrategyConfig) *Strategy {
-	return &Strategy{cfg: cfg}
+func NewGridStrategy(cfg StrategyConfig) *GridStrategy {
+	return &GridStrategy{cfg: cfg}
 }
 
-// CalculateEffectiveInterval calculates the interval adjusted for volatility if needed
-func (s *Strategy) CalculateEffectiveInterval(atr decimal.Decimal) decimal.Decimal {
+// CalculateTargetState computes the desired positions and orders based on current market state
+func (s *GridStrategy) CalculateTargetState(
+	ctx context.Context,
+	currentPrice decimal.Decimal,
+	anchorPrice decimal.Decimal,
+	atr decimal.Decimal,
+	volatilityFactor float64,
+	isRiskTriggered bool,
+	isCircuitTripped bool,
+	state any,
+) (*core.TargetState, error) {
+	levels, ok := state.([]GridLevel)
+	if !ok {
+		return nil, fmt.Errorf("invalid state type for GridStrategy: expected []GridLevel")
+	}
+
+	target := &core.TargetState{
+		Positions: []core.TargetPosition{},
+		Orders:    []core.TargetOrder{},
+	}
+
+	// 0. Check circuit breaker - if tripped, we want NO active orders
+	if isCircuitTripped {
+		return target, nil
+	}
+
+	// 1. Calculate effective parameters
+	interval := s.calculateEffectiveInterval(atr)
+	inventory := s.calculateInventory(levels)
+	skewedPrice := s.calculateSkewedPrice(currentPrice, inventory)
+
+	gridCenter := tradingutils.FindNearestGridPrice(skewedPrice, anchorPrice, interval)
+
+	buyPrices := s.calculateBuyPrices(gridCenter, interval)
+	sellPrices := s.calculateSellPrices(gridCenter, interval)
+
+	activeBuyMap := s.toMap(buyPrices)
+	activeSellMap := s.toMap(sellPrices)
+
+	// 2. Identify missing active levels and determine desired orders
+	processedPrices := make(map[string]bool)
+
+	// Existing positions must be preserved in TargetState
+	for _, level := range levels {
+		priceKey := tradingutils.RoundPrice(level.Price, s.cfg.PriceDecimals).String()
+		processedPrices[priceKey] = true
+
+		if level.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+			target.Positions = append(target.Positions, core.TargetPosition{
+				Exchange: s.cfg.Exchange,
+				Symbol:   s.cfg.Symbol,
+				Size:     level.PositionQty,
+			})
+
+			// Closing orders for existing positions
+			closingOrder := s.decideClosingOrder(level, currentPrice, interval, volatilityFactor)
+			if closingOrder != nil {
+				target.Orders = append(target.Orders, *closingOrder)
+			}
+		}
+
+		// Opening orders for FREE levels
+		if level.PositionStatus == pb.PositionStatus_POSITION_STATUS_EMPTY && !isRiskTriggered {
+			openingOrder := s.decideOpeningOrder(level, skewedPrice, interval, volatilityFactor, activeBuyMap, activeSellMap)
+			if openingOrder != nil {
+				target.Orders = append(target.Orders, *openingOrder)
+			}
+		}
+	}
+
+	// 3. Add new opening orders for missing levels
+	if !isRiskTriggered {
+		// New Buys
+		for _, price := range buyPrices {
+			key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
+			if !processedPrices[key] {
+				safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
+				if price.LessThan(skewedPrice.Sub(safetyBuffer)) {
+					order := s.createTargetOrder(price, "BUY", false, volatilityFactor)
+					if order != nil {
+						target.Orders = append(target.Orders, *order)
+					}
+				}
+			}
+		}
+
+		// New Sells (Neutral mode)
+		for _, price := range sellPrices {
+			key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
+			if !processedPrices[key] {
+				safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
+				if price.GreaterThan(skewedPrice.Add(safetyBuffer)) {
+					order := s.createTargetOrder(price, "SELL", false, volatilityFactor)
+					if order != nil {
+						target.Orders = append(target.Orders, *order)
+					}
+				}
+			}
+		}
+	}
+
+	return target, nil
+}
+
+func (s *GridStrategy) GetSymbol() string {
+	return s.cfg.Symbol
+}
+
+func (s *GridStrategy) calculateEffectiveInterval(atr decimal.Decimal) decimal.Decimal {
 	if atr.IsZero() || s.cfg.VolatilityScale <= 0 {
 		return s.cfg.PriceInterval
 	}
@@ -54,107 +166,35 @@ func (s *Strategy) CalculateEffectiveInterval(atr decimal.Decimal) decimal.Decim
 	return s.cfg.PriceInterval
 }
 
-// CalculateSkewedPrice calculates the reference price adjusted for inventory skew
-func (s *Strategy) CalculateSkewedPrice(currentPrice decimal.Decimal, inventory decimal.Decimal) decimal.Decimal {
+func (s *GridStrategy) calculateSkewedPrice(currentPrice decimal.Decimal, inventory decimal.Decimal) decimal.Decimal {
 	if s.cfg.InventorySkewFactor <= 0 {
 		return currentPrice
 	}
 	return tradingutils.CalculateSkewedPrice(currentPrice, inventory, decimal.Zero, decimal.NewFromFloat(s.cfg.InventorySkewFactor))
 }
 
-// CalculateActions decides which orders to place or cancel
-func (s *Strategy) CalculateActions(
-	currentPrice decimal.Decimal,
-	anchorPrice decimal.Decimal,
-	atr decimal.Decimal,
-	volatilityFactor float64,
-	isRiskTriggered bool,
-	slots []Slot,
-) []*pb.OrderAction {
-	interval := s.CalculateEffectiveInterval(atr)
-	inventory := s.calculateInventory(slots)
-	skewedPrice := s.CalculateSkewedPrice(currentPrice, inventory)
-
-	gridCenter := tradingutils.FindNearestGridPrice(skewedPrice, anchorPrice, interval)
-
-	buyPrices := s.calculateBuyPrices(gridCenter, interval)
-	sellPrices := s.calculateSellPrices(gridCenter, interval)
-
-	activeBuyMap := s.toMap(buyPrices)
-	activeSellMap := s.toMap(sellPrices)
-
-	var actions []*pb.OrderAction
-
-	// 1. Process existing slots
-	processedPrices := make(map[string]bool)
-	for _, slot := range slots {
-		priceKey := tradingutils.RoundPrice(slot.Price, s.cfg.PriceDecimals).String()
-		processedPrices[priceKey] = true
-
-		action := s.decideActionForSlot(slot, skewedPrice, interval, volatilityFactor, isRiskTriggered, activeBuyMap, activeSellMap)
-		if action != nil {
-			actions = append(actions, action)
-		}
-	}
-
-	// 2. Identify missing active slots (opening logic)
-	// Iterate through calculated grid levels and check if they are missing from existing slots
-
-	// Open Buys
-	for _, price := range buyPrices {
-		key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
-		if !processedPrices[key] && !isRiskTriggered {
-			safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
-			if price.LessThan(skewedPrice.Sub(safetyBuffer)) {
-				// Treat as FREE/EMPTY
-				action := s.createPlaceAction(price, pb.OrderSide_ORDER_SIDE_BUY, false, volatilityFactor)
-				if action != nil {
-					actions = append(actions, action)
-				}
-			}
-		}
-	}
-
-	// Open Sells
-	for _, price := range sellPrices {
-		key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
-		if !processedPrices[key] {
-			safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
-			if price.GreaterThan(skewedPrice.Add(safetyBuffer)) {
-				// Treat as FREE/EMPTY
-				action := s.createPlaceAction(price, pb.OrderSide_ORDER_SIDE_SELL, false, volatilityFactor)
-				if action != nil {
-					actions = append(actions, action)
-				}
-			}
-		}
-	}
-
-	return actions
-}
-
-func (s *Strategy) calculateInventory(slots []Slot) decimal.Decimal {
+func (s *GridStrategy) calculateInventory(levels []GridLevel) decimal.Decimal {
 	total := decimal.Zero
-	for _, slot := range slots {
-		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			total = total.Add(slot.PositionQty)
+	for _, level := range levels {
+		if level.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+			total = total.Add(level.PositionQty)
 		}
 	}
 	return total
 }
 
-func (s *Strategy) calculateBuyPrices(center decimal.Decimal, interval decimal.Decimal) []decimal.Decimal {
+func (s *GridStrategy) calculateBuyPrices(center decimal.Decimal, interval decimal.Decimal) []decimal.Decimal {
 	return tradingutils.CalculatePriceLevels(center, interval.Neg(), s.cfg.BuyWindowSize)
 }
 
-func (s *Strategy) calculateSellPrices(center decimal.Decimal, interval decimal.Decimal) []decimal.Decimal {
+func (s *GridStrategy) calculateSellPrices(center decimal.Decimal, interval decimal.Decimal) []decimal.Decimal {
 	if !s.cfg.IsNeutral {
 		return nil
 	}
 	return tradingutils.CalculatePriceLevels(center, interval, s.cfg.SellWindowSize)
 }
 
-func (s *Strategy) toMap(prices []decimal.Decimal) map[string]bool {
+func (s *GridStrategy) toMap(prices []decimal.Decimal) map[string]bool {
 	m := make(map[string]bool)
 	for _, p := range prices {
 		m[tradingutils.RoundPrice(p, s.cfg.PriceDecimals).String()] = true
@@ -162,99 +202,77 @@ func (s *Strategy) toMap(prices []decimal.Decimal) map[string]bool {
 	return m
 }
 
-func (s *Strategy) decideActionForSlot(
-	slot Slot,
-	currentPrice decimal.Decimal,
+func (s *GridStrategy) decideOpeningOrder(
+	level GridLevel,
+	skewedPrice decimal.Decimal,
 	interval decimal.Decimal,
 	volatilityFactor float64,
-	isRiskTriggered bool,
 	activeBuys map[string]bool,
 	activeSells map[string]bool,
-) *pb.OrderAction {
-	priceStr := tradingutils.RoundPrice(slot.Price, s.cfg.PriceDecimals).String()
+) *core.TargetOrder {
+	priceStr := tradingutils.RoundPrice(level.Price, s.cfg.PriceDecimals).String()
 	isBuyCandidate := activeBuys[priceStr]
 	isSellCandidate := activeSells[priceStr]
 
 	safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
 
-	switch slot.SlotStatus {
-	case pb.SlotStatus_SLOT_STATUS_FREE:
-		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_EMPTY {
-			// Opening logic: Disable buys if risk triggered
-			if !isRiskTriggered && isBuyCandidate && slot.Price.LessThan(currentPrice.Sub(safetyBuffer)) {
-				return s.createPlaceAction(slot.Price, pb.OrderSide_ORDER_SIDE_BUY, false, volatilityFactor)
-			}
-			if isSellCandidate && slot.Price.GreaterThan(currentPrice.Add(safetyBuffer)) {
-				return s.createPlaceAction(slot.Price, pb.OrderSide_ORDER_SIDE_SELL, false, volatilityFactor)
-			}
-		} else if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			// Closing logic
-			if !s.cfg.IsNeutral {
-				// Directional Long: close at price + interval
-				sellWindowMax := currentPrice.Add(decimal.NewFromInt(int64(s.cfg.SellWindowSize)).Mul(interval))
-				if slot.Price.LessThanOrEqual(sellWindowMax) {
-					return s.createPlaceAction(slot.Price.Add(interval), pb.OrderSide_ORDER_SIDE_SELL, true, volatilityFactor)
-				}
-			} else {
-				// Neutral: close based on side
-				if slot.PositionQty.IsPositive() {
-					return s.createPlaceAction(slot.Price.Add(interval), pb.OrderSide_ORDER_SIDE_SELL, true, volatilityFactor)
-				} else if slot.PositionQty.IsNegative() {
-					return s.createPlaceAction(slot.Price.Sub(interval), pb.OrderSide_ORDER_SIDE_BUY, true, volatilityFactor)
-				}
-			}
-		}
-
-	case pb.SlotStatus_SLOT_STATUS_LOCKED:
-		// Trailing/Cleanup/Risk logic
-		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
-			// Force cancel all buys if risk triggered
-			if isRiskTriggered {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
-			}
-
-			minPrice := currentPrice.Sub(interval.Mul(decimal.NewFromInt(int64(s.cfg.BuyWindowSize))))
-			if slot.OrderPrice.LessThan(minPrice) || slot.OrderPrice.GreaterThan(currentPrice) {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
-			}
-		} else {
-			maxPrice := currentPrice.Add(interval.Mul(decimal.NewFromInt(int64(s.cfg.SellWindowSize))))
-			if slot.OrderPrice.GreaterThan(maxPrice) || slot.OrderPrice.LessThan(currentPrice) {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
-			}
-		}
+	if isBuyCandidate && level.Price.LessThan(skewedPrice.Sub(safetyBuffer)) {
+		return s.createTargetOrder(level.Price, "BUY", false, volatilityFactor)
+	}
+	if isSellCandidate && level.Price.GreaterThan(skewedPrice.Add(safetyBuffer)) {
+		return s.createTargetOrder(level.Price, "SELL", false, volatilityFactor)
 	}
 
 	return nil
 }
 
-func (s *Strategy) createPlaceAction(price decimal.Decimal, side pb.OrderSide, reduceOnly bool, volatilityFactor float64) *pb.OrderAction {
+func (s *GridStrategy) decideClosingOrder(
+	level GridLevel,
+	currentPrice decimal.Decimal,
+	interval decimal.Decimal,
+	volatilityFactor float64,
+) *core.TargetOrder {
+	if !s.cfg.IsNeutral {
+		// Directional Long: close at level price + interval
+		sellWindowMax := currentPrice.Add(decimal.NewFromInt(int64(s.cfg.SellWindowSize)).Mul(interval))
+		if level.Price.LessThanOrEqual(sellWindowMax) {
+			return s.createTargetOrder(level.Price.Add(interval), "SELL", true, volatilityFactor)
+		}
+	} else {
+		// Neutral: close based on side
+		if level.PositionQty.IsPositive() {
+			return s.createTargetOrder(level.Price.Add(interval), "SELL", true, volatilityFactor)
+		} else if level.PositionQty.IsNegative() {
+			return s.createTargetOrder(level.Price.Sub(interval), "BUY", true, volatilityFactor)
+		}
+	}
+	return nil
+}
+
+func (s *GridStrategy) createTargetOrder(price decimal.Decimal, side string, reduceOnly bool, volatilityFactor float64) *core.TargetOrder {
 	qty := s.calculateDynamicQuantity(volatilityFactor)
 	if price.Mul(qty).LessThan(s.cfg.MinOrderValue) {
 		return nil
 	}
 
-	return &pb.OrderAction{
-		Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
-		Price: pbu.FromGoDecimal(price),
-		Request: &pb.PlaceOrderRequest{
-			Symbol:        s.cfg.Symbol,
-			Side:          side,
-			Type:          pb.OrderType_ORDER_TYPE_LIMIT,
-			Quantity:      pbu.FromGoDecimal(tradingutils.RoundQuantity(qty, s.cfg.QtyDecimals)),
-			Price:         pbu.FromGoDecimal(tradingutils.RoundPrice(price, s.cfg.PriceDecimals)),
-			ReduceOnly:    reduceOnly,
-			PostOnly:      !reduceOnly,
-			ClientOrderId: s.generateClientOrderID(price, side),
-		},
+	return &core.TargetOrder{
+		Exchange:      s.cfg.Exchange,
+		Symbol:        s.cfg.Symbol,
+		Price:         tradingutils.RoundPrice(price, s.cfg.PriceDecimals),
+		Quantity:      tradingutils.RoundQuantity(qty, s.cfg.QtyDecimals),
+		Side:          side,
+		Type:          "LIMIT",
+		ReduceOnly:    reduceOnly,
+		PostOnly:      !reduceOnly,
+		ClientOrderID: s.generateClientOrderID(price, side),
 	}
 }
 
-func (s *Strategy) generateClientOrderID(price decimal.Decimal, side pb.OrderSide) string {
-	return pbu.GenerateCompactOrderID(price, side.String(), s.cfg.PriceDecimals)
+func (s *GridStrategy) generateClientOrderID(price decimal.Decimal, side string) string {
+	return pbu.GenerateCompactOrderID(price, side, s.cfg.PriceDecimals)
 }
 
-func (s *Strategy) calculateDynamicQuantity(vol float64) decimal.Decimal {
+func (s *GridStrategy) calculateDynamicQuantity(vol float64) decimal.Decimal {
 	if vol <= 0 {
 		return s.cfg.OrderQuantity
 	}

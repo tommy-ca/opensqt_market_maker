@@ -64,10 +64,15 @@ type Config struct {
 
 // ExchangeConfig represents exchange-specific configuration
 type ExchangeConfig struct {
-	APIKey     string `yaml:"api_key"`
-	SecretKey  string `yaml:"secret_key"`
-	Passphrase string `yaml:"passphrase,omitempty"`
-	Testnet    bool   `yaml:"testnet,omitempty"`
+	APIKey        string  `yaml:"api_key"`
+	SecretKey     string  `yaml:"secret_key"`
+	Passphrase    string  `yaml:"passphrase,omitempty"`
+	Testnet       bool    `yaml:"testnet,omitempty"`
+	BaseURL       string  `yaml:"base_url,omitempty"`
+	FeeRate       float64 `yaml:"fee_rate,omitempty"`
+	TLSCertFile   string  `yaml:"tls_cert_file,omitempty"`
+	TLSServerName string  `yaml:"tls_server_name,omitempty"`
+	GRPCAPIKey    string  `yaml:"grpc_api_key,omitempty"`
 }
 
 // LoadConfig loads the configuration from a YAML file
