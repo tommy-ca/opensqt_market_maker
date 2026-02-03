@@ -2,34 +2,17 @@
 set -euo pipefail
 
 # check_identity.sh
-# Verifies that the EFFECTIVE git author/email are not generic defaults.
+# Verifies that the EFFECTIVE git author identity is not a generic default.
 
 # Get effective identity (respects env vars and config)
-# git var GIT_AUTHOR_IDENT returns format: "Name <email> timestamp tz"
-IDENT_STRING=$(git var GIT_AUTHOR_IDENT)
-
-# Extract Name (everything before the last <)
-AUTHOR_NAME=$(echo "$IDENT_STRING" | sed -r 's/ <.*//')
-# Extract Email (between < and >)
-AUTHOR_EMAIL=$(echo "$IDENT_STRING" | sed -r 's/.*<(.*)> .*/\1/')
-
-# Patterns to match (case insensitive grep)
+IDENT=$(git var GIT_AUTHOR_IDENT)
 PATTERNS="Your Name|you@example.com|root@localhost|ubuntu@ip-"
 
-FAILED=false
-
-# Use printf to avoid echo flag injection
-if printf "%s" "$AUTHOR_NAME" | grep -qEi "$PATTERNS"; then
-    echo "❌ Error: Author name '$AUTHOR_NAME' is a generic default."
-    FAILED=true
-fi
-
-if printf "%s" "$AUTHOR_EMAIL" | grep -qEi "$PATTERNS"; then
-    echo "❌ Error: Author email '$AUTHOR_EMAIL' is a generic default."
-    FAILED=true
-fi
-
-if [[ "$FAILED" = true ]]; then
+# Check full identity string once for simplicity and robustness
+if printf "%s" "$IDENT" | grep -qEi "$PATTERNS"; then
+    echo "❌ Error: Git identity contains generic default values:"
+    echo "   $IDENT"
+    echo "   Please set your name and email correctly."
     exit 1
 fi
 
