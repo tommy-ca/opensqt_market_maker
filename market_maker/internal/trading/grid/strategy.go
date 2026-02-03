@@ -16,10 +16,6 @@ type GridLevel struct {
 	Price          decimal.Decimal
 	PositionStatus pb.PositionStatus
 	PositionQty    decimal.Decimal
-	SlotStatus     pb.SlotStatus
-	OrderSide      pb.OrderSide
-	OrderPrice     decimal.Decimal
-	OrderID        int64
 }
 
 // StrategyConfig holds the parameters for the grid strategy

@@ -398,6 +398,234 @@ func (x *OrderAction) GetRequest() *PlaceOrderRequest {
 	return nil
 }
 
+type TargetPositionState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exchange      string                 `protobuf:"bytes,1,opt,name=exchange,proto3" json:"exchange,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Size          *decimal.Decimal       `protobuf:"bytes,3,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetPositionState) Reset() {
+	*x = TargetPositionState{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetPositionState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetPositionState) ProtoMessage() {}
+
+func (x *TargetPositionState) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetPositionState.ProtoReflect.Descriptor instead.
+func (*TargetPositionState) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TargetPositionState) GetExchange() string {
+	if x != nil {
+		return x.Exchange
+	}
+	return ""
+}
+
+func (x *TargetPositionState) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TargetPositionState) GetSize() *decimal.Decimal {
+	if x != nil {
+		return x.Size
+	}
+	return nil
+}
+
+type TargetOrder struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exchange      string                 `protobuf:"bytes,1,opt,name=exchange,proto3" json:"exchange,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Price         *decimal.Decimal       `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity      *decimal.Decimal       `protobuf:"bytes,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Side          OrderSide              `protobuf:"varint,5,opt,name=side,proto3,enum=opensqt.market_maker.v1.OrderSide" json:"side,omitempty"`
+	Type          OrderType              `protobuf:"varint,6,opt,name=type,proto3,enum=opensqt.market_maker.v1.OrderType" json:"type,omitempty"`
+	ClientOrderId string                 `protobuf:"bytes,7,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
+	ReduceOnly    bool                   `protobuf:"varint,8,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
+	PostOnly      bool                   `protobuf:"varint,9,opt,name=post_only,json=postOnly,proto3" json:"post_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetOrder) Reset() {
+	*x = TargetOrder{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetOrder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetOrder) ProtoMessage() {}
+
+func (x *TargetOrder) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetOrder.ProtoReflect.Descriptor instead.
+func (*TargetOrder) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *TargetOrder) GetExchange() string {
+	if x != nil {
+		return x.Exchange
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetPrice() *decimal.Decimal {
+	if x != nil {
+		return x.Price
+	}
+	return nil
+}
+
+func (x *TargetOrder) GetQuantity() *decimal.Decimal {
+	if x != nil {
+		return x.Quantity
+	}
+	return nil
+}
+
+func (x *TargetOrder) GetSide() OrderSide {
+	if x != nil {
+		return x.Side
+	}
+	return OrderSide_ORDER_SIDE_UNSPECIFIED
+}
+
+func (x *TargetOrder) GetType() OrderType {
+	if x != nil {
+		return x.Type
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *TargetOrder) GetClientOrderId() string {
+	if x != nil {
+		return x.ClientOrderId
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetReduceOnly() bool {
+	if x != nil {
+		return x.ReduceOnly
+	}
+	return false
+}
+
+func (x *TargetOrder) GetPostOnly() bool {
+	if x != nil {
+		return x.PostOnly
+	}
+	return false
+}
+
+type TargetState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Positions     []*TargetPositionState `protobuf:"bytes,2,rep,name=positions,proto3" json:"positions,omitempty"`
+	Orders        []*TargetOrder         `protobuf:"bytes,3,rep,name=orders,proto3" json:"orders,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetState) Reset() {
+	*x = TargetState{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetState) ProtoMessage() {}
+
+func (x *TargetState) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetState.ProtoReflect.Descriptor instead.
+func (*TargetState) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TargetState) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *TargetState) GetPositions() []*TargetPositionState {
+	if x != nil {
+		return x.Positions
+	}
+	return nil
+}
+
+func (x *TargetState) GetOrders() []*TargetOrder {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
+}
+
 var File_opensqt_market_maker_v1_state_proto protoreflect.FileDescriptor
 
 const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
@@ -450,7 +678,26 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x19\n" +
 	"\border_id\x18\x03 \x01(\x03R\aorderId\x12*\n" +
 	"\x05price\x18\x04 \x01(\v2\x14.google.type.DecimalR\x05price\x12D\n" +
-	"\arequest\x18\x05 \x01(\v2*.opensqt.market_maker.v1.PlaceOrderRequestR\arequestB\xbd\x01\n" +
+	"\arequest\x18\x05 \x01(\v2*.opensqt.market_maker.v1.PlaceOrderRequestR\arequest\"s\n" +
+	"\x13TargetPositionState\x12\x1a\n" +
+	"\bexchange\x18\x01 \x01(\tR\bexchange\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12(\n" +
+	"\x04size\x18\x03 \x01(\v2\x14.google.type.DecimalR\x04size\"\xf5\x02\n" +
+	"\vTargetOrder\x12\x1a\n" +
+	"\bexchange\x18\x01 \x01(\tR\bexchange\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12*\n" +
+	"\x05price\x18\x03 \x01(\v2\x14.google.type.DecimalR\x05price\x120\n" +
+	"\bquantity\x18\x04 \x01(\v2\x14.google.type.DecimalR\bquantity\x126\n" +
+	"\x04side\x18\x05 \x01(\x0e2\".opensqt.market_maker.v1.OrderSideR\x04side\x126\n" +
+	"\x04type\x18\x06 \x01(\x0e2\".opensqt.market_maker.v1.OrderTypeR\x04type\x12&\n" +
+	"\x0fclient_order_id\x18\a \x01(\tR\rclientOrderId\x12\x1f\n" +
+	"\vreduce_only\x18\b \x01(\bR\n" +
+	"reduceOnly\x12\x1b\n" +
+	"\tpost_only\x18\t \x01(\bR\bpostOnly\"\xb5\x01\n" +
+	"\vTargetState\x12\x1c\n" +
+	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12J\n" +
+	"\tpositions\x18\x02 \x03(\v2,.opensqt.market_maker.v1.TargetPositionStateR\tpositions\x12<\n" +
+	"\x06orders\x18\x03 \x03(\v2$.opensqt.market_maker.v1.TargetOrderR\x06ordersB\xbd\x01\n" +
 	"\x1bcom.opensqt.market_maker.v1B\n" +
 	"StateProtoP\x01Z\x18market_maker/internal/pb\xa2\x02\x03OMX\xaa\x02\x16Opensqt.MarketMaker.V1\xca\x02\x16Opensqt\\MarketMaker\\V1\xe2\x02\"Opensqt\\MarketMaker\\V1\\GPBMetadata\xea\x02\x18Opensqt::MarketMaker::V1b\x06proto3"
 
@@ -466,45 +713,56 @@ func file_opensqt_market_maker_v1_state_proto_rawDescGZIP() []byte {
 	return file_opensqt_market_maker_v1_state_proto_rawDescData
 }
 
-var file_opensqt_market_maker_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_opensqt_market_maker_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_opensqt_market_maker_v1_state_proto_goTypes = []any{
 	(*InventorySlot)(nil),           // 0: opensqt.market_maker.v1.InventorySlot
 	(*State)(nil),                   // 1: opensqt.market_maker.v1.State
 	(*PositionManagerSnapshot)(nil), // 2: opensqt.market_maker.v1.PositionManagerSnapshot
 	(*OrderAction)(nil),             // 3: opensqt.market_maker.v1.OrderAction
-	nil,                             // 4: opensqt.market_maker.v1.State.SlotsEntry
-	nil,                             // 5: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
-	(*decimal.Decimal)(nil),         // 6: google.type.Decimal
-	(PositionStatus)(0),             // 7: opensqt.market_maker.v1.PositionStatus
-	(OrderSide)(0),                  // 8: opensqt.market_maker.v1.OrderSide
-	(OrderStatus)(0),                // 9: opensqt.market_maker.v1.OrderStatus
-	(SlotStatus)(0),                 // 10: opensqt.market_maker.v1.SlotStatus
-	(OrderActionType)(0),            // 11: opensqt.market_maker.v1.OrderActionType
-	(*PlaceOrderRequest)(nil),       // 12: opensqt.market_maker.v1.PlaceOrderRequest
+	(*TargetPositionState)(nil),     // 4: opensqt.market_maker.v1.TargetPositionState
+	(*TargetOrder)(nil),             // 5: opensqt.market_maker.v1.TargetOrder
+	(*TargetState)(nil),             // 6: opensqt.market_maker.v1.TargetState
+	nil,                             // 7: opensqt.market_maker.v1.State.SlotsEntry
+	nil,                             // 8: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
+	(*decimal.Decimal)(nil),         // 9: google.type.Decimal
+	(PositionStatus)(0),             // 10: opensqt.market_maker.v1.PositionStatus
+	(OrderSide)(0),                  // 11: opensqt.market_maker.v1.OrderSide
+	(OrderStatus)(0),                // 12: opensqt.market_maker.v1.OrderStatus
+	(SlotStatus)(0),                 // 13: opensqt.market_maker.v1.SlotStatus
+	(OrderActionType)(0),            // 14: opensqt.market_maker.v1.OrderActionType
+	(*PlaceOrderRequest)(nil),       // 15: opensqt.market_maker.v1.PlaceOrderRequest
+	(OrderType)(0),                  // 16: opensqt.market_maker.v1.OrderType
 }
 var file_opensqt_market_maker_v1_state_proto_depIdxs = []int32{
-	6,  // 0: opensqt.market_maker.v1.InventorySlot.price:type_name -> google.type.Decimal
-	7,  // 1: opensqt.market_maker.v1.InventorySlot.position_status:type_name -> opensqt.market_maker.v1.PositionStatus
-	6,  // 2: opensqt.market_maker.v1.InventorySlot.position_qty:type_name -> google.type.Decimal
-	8,  // 3: opensqt.market_maker.v1.InventorySlot.order_side:type_name -> opensqt.market_maker.v1.OrderSide
-	9,  // 4: opensqt.market_maker.v1.InventorySlot.order_status:type_name -> opensqt.market_maker.v1.OrderStatus
-	6,  // 5: opensqt.market_maker.v1.InventorySlot.order_price:type_name -> google.type.Decimal
-	6,  // 6: opensqt.market_maker.v1.InventorySlot.order_filled_qty:type_name -> google.type.Decimal
-	10, // 7: opensqt.market_maker.v1.InventorySlot.slot_status:type_name -> opensqt.market_maker.v1.SlotStatus
-	4,  // 8: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
-	6,  // 9: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
-	5,  // 10: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
-	6,  // 11: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
-	11, // 12: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
-	6,  // 13: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
-	12, // 14: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
-	0,  // 15: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	0,  // 16: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	9,  // 0: opensqt.market_maker.v1.InventorySlot.price:type_name -> google.type.Decimal
+	10, // 1: opensqt.market_maker.v1.InventorySlot.position_status:type_name -> opensqt.market_maker.v1.PositionStatus
+	9,  // 2: opensqt.market_maker.v1.InventorySlot.position_qty:type_name -> google.type.Decimal
+	11, // 3: opensqt.market_maker.v1.InventorySlot.order_side:type_name -> opensqt.market_maker.v1.OrderSide
+	12, // 4: opensqt.market_maker.v1.InventorySlot.order_status:type_name -> opensqt.market_maker.v1.OrderStatus
+	9,  // 5: opensqt.market_maker.v1.InventorySlot.order_price:type_name -> google.type.Decimal
+	9,  // 6: opensqt.market_maker.v1.InventorySlot.order_filled_qty:type_name -> google.type.Decimal
+	13, // 7: opensqt.market_maker.v1.InventorySlot.slot_status:type_name -> opensqt.market_maker.v1.SlotStatus
+	7,  // 8: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
+	9,  // 9: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
+	8,  // 10: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
+	9,  // 11: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
+	14, // 12: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
+	9,  // 13: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
+	15, // 14: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
+	9,  // 15: opensqt.market_maker.v1.TargetPositionState.size:type_name -> google.type.Decimal
+	9,  // 16: opensqt.market_maker.v1.TargetOrder.price:type_name -> google.type.Decimal
+	9,  // 17: opensqt.market_maker.v1.TargetOrder.quantity:type_name -> google.type.Decimal
+	11, // 18: opensqt.market_maker.v1.TargetOrder.side:type_name -> opensqt.market_maker.v1.OrderSide
+	16, // 19: opensqt.market_maker.v1.TargetOrder.type:type_name -> opensqt.market_maker.v1.OrderType
+	4,  // 20: opensqt.market_maker.v1.TargetState.positions:type_name -> opensqt.market_maker.v1.TargetPositionState
+	5,  // 21: opensqt.market_maker.v1.TargetState.orders:type_name -> opensqt.market_maker.v1.TargetOrder
+	0,  // 22: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	0,  // 23: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	24, // [24:24] is the sub-list for method output_type
+	24, // [24:24] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_opensqt_market_maker_v1_state_proto_init() }
@@ -520,7 +778,7 @@ func file_opensqt_market_maker_v1_state_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opensqt_market_maker_v1_state_proto_rawDesc), len(file_opensqt_market_maker_v1_state_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

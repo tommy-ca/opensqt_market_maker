@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -67,25 +66,27 @@ func (a *App) Run(runners ...Runner) error {
 
 	// Wait for all runners to finish or for a signal to be received
 	if err := g.Wait(); err != nil {
-		if ctx.Err() == nil {
-			// The error was not caused by a signal (context cancellation)
+		// Even if context was canceled, we want to know about the error that caused it
+		// (if it wasn't just a signal)
+		// errgroup.Wait() returns the first non-nil error.
+		// If it returns an error, something failed.
+		// If it's context.Canceled, it might be due to signal or other runner failure.
+
+		// If the error is NOT context.Canceled, it's a real failure.
+		// If it IS context.Canceled, check if we received a signal.
+		if err != context.Canceled {
 			a.Logger.Error("application stopped with error", "error", err)
 			return err
 		}
+
+		// If context canceled but no signal received yet? (should not happen with errgroup unless manual cancel)
+		// But wait, errgroup cancels context when ANY go routine returns error.
+		// So if one fails, context is canceled for others.
+		// g.Wait() returns that error.
+		// So we just return the error.
+		return err
 	}
 
 	a.Logger.Info("application shut down gracefully")
 	return nil
-}
-
-// Shutdown handles manual cleanup tasks (closing DB connections, etc.)
-func (a *App) Shutdown(timeout time.Duration) {
-	a.Logger.Info("cleaning up resources", "timeout", timeout)
-
-	// Create a timeout context for cleanup
-	// _, cancel := context.WithTimeout(context.Background(), timeout)
-	// defer cancel()
-
-	// Perform cleanup:
-	// a.DB.Close()
 }
