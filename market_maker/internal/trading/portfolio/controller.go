@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
@@ -167,23 +168,115 @@ func (c *PortfolioController) Rebalance(ctx context.Context) error {
 		c.logger.Error("Some Priority 1/2 rebalance actions failed", "error", err)
 	}
 
+	// Margin Gate: Wait for health to stabilize before expansion
+	if err := c.waitForMarginHealth(ctx, 0.7, 30*time.Second); err != nil {
+		c.logger.Error("Margin health check failed before expansion, skipping Group 2", "error", err)
+		return nil
+	}
+
 	// Group 2: Priority 3 & 4 (Expansion/Addition)
-	var g2 errgroup.Group
+	if err := c.executeBatch(ctx, actions, targetMap, 3, 4); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *PortfolioController) rebalanceImpl(ctx context.Context) error {
+	// Existing implementation for non-durable mode
+	opps, err := c.manager.Scan(ctx)
+	if err != nil {
+		return err
+	}
+	profile := c.marginSim.GetRiskProfile()
+	leverage := decimal.NewFromInt(3)
+	targets := c.allocator.Allocate(opps, profile.AdjustedEquity, leverage)
+
+	c.mu.Lock()
+	c.lastOpps = opps
+	c.lastTargets = targets
+	targetMap := make(map[string]TargetPosition)
+	for _, t := range targets {
+		targetMap[t.Symbol] = t
+	}
+	var actions []RebalanceAction
+	for sym, eng := range c.activeEngines {
+		if target, ok := targetMap[sym]; ok {
+			currentQty := eng.GetOrderQuantity()
+			if c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
+				diff := target.Notional.Sub(currentQty)
+				priority := 3
+				if diff.IsNegative() {
+					priority = 2
+				}
+				actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
+			}
+		} else {
+			actions = append(actions, RebalanceAction{Symbol: sym, Diff: eng.GetOrderQuantity().Neg(), Priority: 1})
+		}
+	}
+	for _, t := range targets {
+		if _, ok := c.activeEngines[t.Symbol]; !ok {
+			actions = append(actions, RebalanceAction{Symbol: t.Symbol, Diff: t.Notional, Priority: 4})
+		}
+	}
+	sort.Slice(actions, func(i, j int) bool {
+		return actions[i].Priority < actions[j].Priority
+	})
+	c.mu.Unlock()
+
+	// Simplified execution for non-durable
 	for _, a := range actions {
-		if a.Priority > 2 {
+		if err := c.executeAction(ctx, a, targetMap[a.Symbol]); err != nil {
+			c.logger.Error("Action failed", "symbol", a.Symbol, "error", err)
+		}
+	}
+	return nil
+}
+
+func (c *PortfolioController) executeBatch(ctx context.Context, actions []RebalanceAction, targetMap map[string]TargetPosition, minP, maxP int) error {
+	var g errgroup.Group
+	for _, a := range actions {
+		if a.Priority >= minP && a.Priority <= maxP {
 			a := a
-			g2.Go(func() error {
+			g.Go(func() error {
 				select {
 				case c.sem <- struct{}{}:
 					defer func() { <-c.sem }()
 				case <-ctx.Done():
 					return ctx.Err()
 				}
+				// Use durable step if context allows, else direct
+				if dbCtx, ok := ctx.(dbos.DBOSContext); ok {
+					_, err := dbCtx.RunAsStep(dbCtx, func(ctx context.Context) (any, error) {
+						return nil, c.executeAction(ctx, a, targetMap[a.Symbol])
+					})
+					return err
+				}
 				return c.executeAction(ctx, a, targetMap[a.Symbol])
 			})
 		}
 	}
-	return g2.Wait()
+	return g.Wait()
+}
+
+func (c *PortfolioController) waitForMarginHealth(ctx context.Context, minHealth float64, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		profile := c.marginSim.GetRiskProfile()
+		if profile.HealthScore.GreaterThanOrEqual(decimal.NewFromFloat(minHealth)) {
+			return nil
+		}
+		c.logger.Warn("Waiting for margin health...", "current", profile.HealthScore.String(), "target", minHealth)
+
+		// If in DBOS, use dbos.Sleep
+		if dbCtx, ok := ctx.(dbos.DBOSContext); ok {
+			dbos.Sleep(dbCtx, 2*time.Second)
+		} else {
+			time.Sleep(2 * time.Second)
+		}
+	}
+	return fmt.Errorf("margin health timeout")
 }
 
 func (c *PortfolioController) GetLastTargets() []TargetPosition {
