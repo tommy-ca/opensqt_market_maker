@@ -200,61 +200,118 @@ func (e *ArbitrageEngine) OnFundingUpdate(ctx context.Context, update *pb.Fundin
 		isRiskTriggered = e.monitor.IsTriggered()
 	}
 
+	if isRiskTriggered {
+		e.logger.Warn("Risk triggered, skipping entry")
+		e.mu.Unlock()
+		return nil
+	}
+
 	action := e.strategy.CalculateAction(apr, isPositionOpen)
+
+	// 2. Determine Target Position
+	targetSize := decimal.Zero
 
 	switch action {
 	case arbitrage.ActionEntryPositive:
-		if isRiskTriggered {
-			e.logger.Warn("Risk triggered, skipping entry")
-			e.mu.Unlock()
-			return nil
-		}
-		e.logger.Info("Strategy: ENTRY (Positive) signaled", "apr", apr.String())
-		e.isExecuting = true
-		e.mu.Unlock()
-		err := e.executeEntry(ctx, true, update.NextFundingTime)
-		e.mu.Lock()
-		e.isExecuting = false
-		if err == nil {
-			e.lastNextFundingTime = update.NextFundingTime
-		}
-		e.mu.Unlock()
-		return err
-
+		// Target Long Spot / Short Perp (Positive Funding)
+		targetSize = e.orderQuantity
 	case arbitrage.ActionEntryNegative:
-		if isRiskTriggered {
-			e.logger.Warn("Risk triggered, skipping entry")
-			e.mu.Unlock()
-			return nil
+		// Target Short Spot / Long Perp (Negative Funding)
+		targetSize = e.orderQuantity.Neg()
+	case arbitrage.ActionExit, arbitrage.ActionToxicExit:
+		targetSize = decimal.Zero
+	case arbitrage.ActionReduceExposure:
+		// Reduce by 50%
+		spotSize := e.legManager.GetSize(e.spotExchange, e.symbol)
+		if spotSize.IsZero() {
+			targetSize = decimal.Zero
+		} else {
+			targetSize = spotSize.Mul(decimal.NewFromFloat(0.5))
 		}
-		e.logger.Info("Strategy: ENTRY (Negative) signaled", "apr", apr.String())
-		e.isExecuting = true
-		e.mu.Unlock()
-		err := e.executeEntry(ctx, false, update.NextFundingTime)
-		e.mu.Lock()
-		e.isExecuting = false
-		if err == nil {
-			e.lastNextFundingTime = update.NextFundingTime
-		}
-		e.mu.Unlock()
-		return err
-
-	case arbitrage.ActionExit:
-		e.logger.Info("Strategy: EXIT signaled", "apr", apr.String())
-		e.isExecuting = true
-		e.mu.Unlock()
-		err := e.executeExit(ctx, update.NextFundingTime)
-		e.mu.Lock()
-		e.isExecuting = false
-		if err == nil {
-			e.lastNextFundingTime = update.NextFundingTime
-		}
-		e.mu.Unlock()
-		return err
+	case arbitrage.ActionNone:
+		// Maintain current position
+		currentSigned := e.legManager.GetSignedSize(e.spotExchange, e.symbol)
+		targetSize = currentSigned
 	}
 
+	target := &core.TargetState{
+		Positions: []core.TargetPosition{
+			{Exchange: e.spotExchange, Symbol: e.symbol, Size: targetSize},
+			{Exchange: e.perpExchange, Symbol: e.symbol, Size: targetSize.Neg()},
+		},
+	}
+
+	// 3. Reconcile
+	e.reconcile(ctx, target, update.NextFundingTime)
+
+	e.isExecuting = false
 	e.mu.Unlock()
 	return nil
+}
+
+func (e *ArbitrageEngine) GetStatus() (*core.TargetState, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	// Construct a snapshot of the current state
+	// For now, return what we have in memory as target
+	return &core.TargetState{
+		Positions: []core.TargetPosition{
+			{Exchange: e.spotExchange, Symbol: e.symbol, Size: e.legManager.GetSize(e.spotExchange, e.symbol)},
+			{Exchange: e.perpExchange, Symbol: e.symbol, Size: e.legManager.GetSize(e.perpExchange, e.symbol)},
+		},
+	}, nil
+}
+
+func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetState, nextFundingTime int64) {
+	// Simple Delta Reconciliation
+	spotTarget := target.Positions[0].Size
+	spotCurrent := e.legManager.GetSignedSize(e.spotExchange, e.symbol)
+
+	// Calculate Delta
+	// Delta = Target - Current
+	delta := spotTarget.Sub(spotCurrent)
+
+	// Threshold for action (dust check)
+	if delta.Abs().LessThan(decimal.NewFromFloat(0.0001)) {
+		return
+	}
+
+	e.logger.Info("Reconciling", "target", spotTarget, "current", spotCurrent, "delta", delta)
+
+	// Determine Sides
+	isPositive := delta.IsPositive() // Buying spot
+
+	// Execute Entry/Exit based on Delta
+	if isPositive {
+		// Buying Spot (Entry Positive or Exit Negative)
+		// Check if we are increasing exposure or decreasing
+		if spotCurrent.IsNegative() {
+			// Closing Short Spot -> Exit Negative
+			// But executeExit closes ALL. We need partial.
+			// Let's use the atomic entry logic for new positions
+			if spotCurrent.IsZero() {
+				// New Entry
+				e.executeEntry(ctx, true, nextFundingTime)
+			} else {
+				// Partial close logic (TODO: Refactor executeExit/Entry to handle quantity)
+				// For now, if we need to close, we call executeExit which closes everything
+				// This is suboptimal but safe for this refactor step
+				e.executeExit(ctx, nextFundingTime)
+			}
+		} else {
+			// Increasing Long Spot -> Entry Positive
+			e.executeEntry(ctx, true, nextFundingTime)
+		}
+	} else {
+		// Selling Spot (Entry Negative or Exit Positive)
+		if spotCurrent.IsPositive() {
+			// Closing Long Spot -> Exit Positive
+			e.executeExit(ctx, nextFundingTime)
+		} else {
+			// Increasing Short Spot -> Entry Negative
+			e.executeEntry(ctx, false, nextFundingTime)
+		}
+	}
 }
 
 func (e *ArbitrageEngine) updateDeltaNeutralityMetrics() {

@@ -37,16 +37,16 @@ type AppConfig struct {
 
 // ExchangeConfig contains exchange-specific configuration
 type ExchangeConfig struct {
-	APIKey        string  `yaml:"api_key" validate:"required"`
-	SecretKey     string  `yaml:"secret_key" validate:"required"`
-	Passphrase    string  `yaml:"passphrase"` // Required for some exchanges
+	APIKey        Secret  `yaml:"api_key" validate:"required"`
+	SecretKey     Secret  `yaml:"secret_key" validate:"required"`
+	Passphrase    Secret  `yaml:"passphrase"` // Required for some exchanges
 	BaseURL       string  `yaml:"base_url"`   // Optional override for API URL
 	FeeRate       float64 `yaml:"fee_rate" validate:"required,min=0,max=1"`
 	TLSCertFile   string  `yaml:"tls_cert_file"`   // TLS certificate file for gRPC (remote only)
 	TLSKeyFile    string  `yaml:"tls_key_file"`    // TLS key file for gRPC server (remote only)
 	TLSServerName string  `yaml:"tls_server_name"` // TLS server name for verification (remote only)
-	GRPCAPIKeys   string  `yaml:"grpc_api_keys"`   // Comma-separated API keys for gRPC authentication (server only)
-	GRPCAPIKey    string  `yaml:"grpc_api_key"`    // Single API key for gRPC client authentication
+	GRPCAPIKeys   Secret  `yaml:"grpc_api_keys"`   // Comma-separated API keys for gRPC authentication (server only)
+	GRPCAPIKey    Secret  `yaml:"grpc_api_key"`    // Single API key for gRPC client authentication
 	GRPCRateLimit int     `yaml:"grpc_rate_limit"` // Rate limit per API key (requests per second)
 }
 
