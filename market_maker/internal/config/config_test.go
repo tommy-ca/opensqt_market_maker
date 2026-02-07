@@ -166,8 +166,10 @@ func TestConfig_String(t *testing.T) {
 	cfg := &Config{
 		Exchanges: map[string]ExchangeConfig{
 			"test": {
-				APIKey:    Secret("my_super_secret_api_key"),
-				SecretKey: Secret("my_super_secret_secret_key"),
+				APIKey:      Secret("my_super_secret_api_key"),
+				SecretKey:   Secret("my_super_secret_secret_key"),
+				GRPCAPIKeys: Secret("my_super_secret_grpc_keys"),
+				GRPCAPIKey:  Secret("my_super_secret_grpc_key"),
 			},
 		},
 	}
@@ -179,6 +181,8 @@ func TestConfig_String(t *testing.T) {
 	// 2. Ensure full cleartext is GONE
 	assert.NotContains(t, output, "my_super_secret_api_key", "output should NOT contain full API key")
 	assert.NotContains(t, output, "my_super_secret_secret_key", "output should NOT contain full Secret key")
+	assert.NotContains(t, output, "my_super_secret_grpc_keys", "output should NOT contain full GRPC API keys")
+	assert.NotContains(t, output, "my_super_secret_grpc_key", "output should NOT contain full GRPC API key")
 
 	// 3. Ensure partial content is NOT leaked
 	assert.NotContains(t, output, "my_s", "output should NOT contain partial secret parts")

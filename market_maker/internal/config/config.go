@@ -352,6 +352,8 @@ func (c *Config) String() string {
 		maskedExchange.APIKey = Secret(maskString(string(exchange.APIKey)))
 		maskedExchange.SecretKey = Secret(maskString(string(exchange.SecretKey)))
 		maskedExchange.Passphrase = Secret(maskString(string(exchange.Passphrase)))
+		maskedExchange.GRPCAPIKeys = Secret(maskString(string(exchange.GRPCAPIKeys)))
+		maskedExchange.GRPCAPIKey = Secret(maskString(string(exchange.GRPCAPIKey)))
 		configCopy.Exchanges[name] = maskedExchange
 	}
 

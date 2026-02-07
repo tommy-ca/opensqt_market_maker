@@ -3,6 +3,7 @@ package simple
 import (
 	"context"
 	"market_maker/internal/pb"
+	"market_maker/migrations"
 	"market_maker/pkg/pbu"
 	"path/filepath"
 	"testing"
@@ -17,17 +18,7 @@ func createTestStore(t *testing.T, dbPath string) *SQLiteStore {
 		t.Fatalf("failed to create store: %v", err)
 	}
 
-	// Create schema inline to avoid dependency on external atlas tool
-	schema := `CREATE TABLE state (
-		id integer NOT NULL,
-		data text NOT NULL,
-		checksum blob NOT NULL,
-		updated_at integer NOT NULL,
-		PRIMARY KEY (id),
-		CONSTRAINT id_check CHECK (id = 1)
-	);`
-
-	if _, err := store.db.Exec(schema); err != nil {
+	if _, err := store.db.Exec(migrations.InitSchema); err != nil {
 		t.Fatalf("failed to create schema: %v", err)
 	}
 
