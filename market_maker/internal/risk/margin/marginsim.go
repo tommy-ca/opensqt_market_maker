@@ -103,12 +103,15 @@ func (s *MarginSim) GetRiskProfile() core.RiskProfile {
 }
 
 // SimulateImpact checks the margin impact of proposed position changes
-func (s *MarginSim) SimulateImpact(proposals map[string]decimal.Decimal) decimal.Decimal {
+func (s *MarginSim) SimulateImpact(proposals map[string]decimal.Decimal) core.SimulationResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.lastAccount == nil {
-		return decimal.Zero
+		return core.SimulationResult{
+			HealthScore:    decimal.Zero,
+			WouldLiquidate: true,
+		}
 	}
 
 	adjEq := pbu.ToGoDecimal(s.lastAccount.AdjustedEquity)
@@ -130,7 +133,12 @@ func (s *MarginSim) SimulateImpact(proposals map[string]decimal.Decimal) decimal
 		price, ok := s.prices[symbol]
 		if !ok {
 			// Cannot simulate without price, return 0 health for safety
-			return decimal.Zero
+			return core.SimulationResult{
+				HealthScore:                decimal.Zero,
+				ProjectedAdjustedEquity:    projectedAdjEq,
+				ProjectedMaintenanceMargin: projectedTMM,
+				WouldLiquidate:             true,
+			}
 		}
 
 		// 1. Maintenance Margin Impact (MMR)
@@ -173,13 +181,31 @@ func (s *MarginSim) SimulateImpact(proposals map[string]decimal.Decimal) decimal
 		health := decimal.NewFromInt(1).Sub(safeTMM.Div(projectedAdjEq))
 
 		if health.IsNegative() {
-			return decimal.Zero
+			return core.SimulationResult{
+				HealthScore:                decimal.Zero,
+				ProjectedAdjustedEquity:    projectedAdjEq,
+				ProjectedMaintenanceMargin: projectedTMM,
+				WouldLiquidate:             true,
+			}
 		}
+
+		finalHealth := health
 		if health.GreaterThan(decimal.NewFromInt(1)) {
-			return decimal.NewFromInt(1)
+			finalHealth = decimal.NewFromInt(1)
 		}
-		return health
+
+		return core.SimulationResult{
+			HealthScore:                finalHealth,
+			ProjectedAdjustedEquity:    projectedAdjEq,
+			ProjectedMaintenanceMargin: projectedTMM,
+			WouldLiquidate:             false,
+		}
 	}
 
-	return decimal.Zero
+	return core.SimulationResult{
+		HealthScore:                decimal.Zero,
+		ProjectedAdjustedEquity:    projectedAdjEq,
+		ProjectedMaintenanceMargin: projectedTMM,
+		WouldLiquidate:             true,
+	}
 }

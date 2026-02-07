@@ -35,7 +35,7 @@ const (
 // SignRequest adds authentication headers and signature to the request
 func (e *BinanceExchange) SignRequest(req *http.Request, body []byte) error {
 	// Add API Key header
-	req.Header.Set("X-MBX-APIKEY", e.GetConfig().APIKey)
+	req.Header.Set("X-MBX-APIKEY", string(e.GetConfig().APIKey))
 
 	// Get current query params
 	q := req.URL.Query()
@@ -47,7 +47,7 @@ func (e *BinanceExchange) SignRequest(req *http.Request, body []byte) error {
 
 	// Calculate signature
 	queryString := q.Encode()
-	mac := hmac.New(sha256.New, []byte(e.GetConfig().SecretKey))
+	mac := hmac.New(sha256.New, []byte(string(e.GetConfig().SecretKey)))
 	mac.Write([]byte(queryString))
 	signature := hex.EncodeToString(mac.Sum(nil))
 

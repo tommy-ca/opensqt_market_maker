@@ -23,8 +23,9 @@ type PortfolioController struct {
 	logger    core.ILogger
 	interval  time.Duration
 
-	mu            sync.RWMutex
-	activeEngines map[string]PortfolioEngine // symbol -> engine
+	mu sync.RWMutex
+	// activeEngines map[string]PortfolioEngine // symbol -> engine
+	activeEngines sync.Map
 	lastTargets   []TargetPosition
 	lastOpps      []arbitrage.Opportunity
 
@@ -43,15 +44,15 @@ func NewPortfolioController(
 ) *PortfolioController {
 
 	return &PortfolioController{
-		manager:       manager,
-		allocator:     allocator,
-		marginSim:     marginSim,
-		orch:          orch,
-		logger:        logger.WithField("component", "portfolio_controller"),
-		interval:      interval,
-		activeEngines: make(map[string]PortfolioEngine),
-		sem:           make(chan struct{}, 5), // Limit to 5 concurrent actions
-		stopChan:      make(chan struct{}),
+		manager:   manager,
+		allocator: allocator,
+		marginSim: marginSim,
+		orch:      orch,
+		logger:    logger.WithField("component", "portfolio_controller"),
+		interval:  interval,
+		// activeEngines: make(map[string]PortfolioEngine), // sync.Map zero value is usable
+		sem:      make(chan struct{}, 5), // Limit to 5 concurrent actions
+		stopChan: make(chan struct{}),
 	}
 }
 
@@ -105,9 +106,9 @@ func (c *PortfolioController) Rebalance(ctx context.Context) error {
 
 	// 3. Reconciler: Match Actual with Target
 	c.mu.Lock()
-
 	c.lastOpps = opps
 	c.lastTargets = targets
+	c.mu.Unlock()
 
 	targetMap := make(map[string]TargetPosition)
 	for _, t := range targets {
@@ -117,26 +118,34 @@ func (c *PortfolioController) Rebalance(ctx context.Context) error {
 	var actions []RebalanceAction
 
 	// a. Check for exits or reductions (Priority 1 & 2)
-	for sym, eng := range c.activeEngines {
-		if target, ok := targetMap[sym]; ok {
-			currentQty := eng.GetOrderQuantity()
-			if c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
-				diff := target.Notional.Sub(currentQty)
-				priority := 3
-				if diff.IsNegative() {
-					priority = 2 // De-risk (reduction)
-				}
-				actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
-			}
-		} else {
+	c.activeEngines.Range(func(key, value interface{}) bool {
+		sym := key.(string)
+		eng := value.(PortfolioEngine)
+
+		target, ok := targetMap[sym]
+		if !ok {
 			// Complete removal
 			actions = append(actions, RebalanceAction{Symbol: sym, Diff: eng.GetOrderQuantity().Neg(), Priority: 1})
+			return true
 		}
-	}
+
+		currentQty := eng.GetOrderQuantity()
+		if !c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
+			return true
+		}
+
+		diff := target.Notional.Sub(currentQty)
+		priority := 3
+		if diff.IsNegative() {
+			priority = 2 // De-risk (reduction)
+		}
+		actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
+		return true
+	})
 
 	// b. Check for additions (Priority 4)
 	for _, t := range targets {
-		if _, ok := c.activeEngines[t.Symbol]; !ok {
+		if _, ok := c.activeEngines.Load(t.Symbol); !ok {
 			actions = append(actions, RebalanceAction{Symbol: t.Symbol, Diff: t.Notional, Priority: 4})
 		}
 	}
@@ -145,7 +154,6 @@ func (c *PortfolioController) Rebalance(ctx context.Context) error {
 	sort.Slice(actions, func(i, j int) bool {
 		return actions[i].Priority < actions[j].Priority
 	})
-	c.mu.Unlock()
 
 	// 4. Execution: Apply Actions in parallel batches by priority
 	// Group 1: Priority 1 & 2 (Reduction/Removal) - free up margin first
@@ -195,35 +203,45 @@ func (c *PortfolioController) rebalanceImpl(ctx context.Context) error {
 	c.mu.Lock()
 	c.lastOpps = opps
 	c.lastTargets = targets
+	c.mu.Unlock()
+
 	targetMap := make(map[string]TargetPosition)
 	for _, t := range targets {
 		targetMap[t.Symbol] = t
 	}
 	var actions []RebalanceAction
-	for sym, eng := range c.activeEngines {
-		if target, ok := targetMap[sym]; ok {
-			currentQty := eng.GetOrderQuantity()
-			if c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
-				diff := target.Notional.Sub(currentQty)
-				priority := 3
-				if diff.IsNegative() {
-					priority = 2
-				}
-				actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
-			}
-		} else {
+	c.activeEngines.Range(func(key, value interface{}) bool {
+		sym := key.(string)
+		eng := value.(PortfolioEngine)
+
+		target, ok := targetMap[sym]
+		if !ok {
 			actions = append(actions, RebalanceAction{Symbol: sym, Diff: eng.GetOrderQuantity().Neg(), Priority: 1})
+			return true
 		}
-	}
+
+		currentQty := eng.GetOrderQuantity()
+		if !c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
+			return true
+		}
+
+		diff := target.Notional.Sub(currentQty)
+		priority := 3
+		if diff.IsNegative() {
+			priority = 2
+		}
+		actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
+		return true
+	})
+
 	for _, t := range targets {
-		if _, ok := c.activeEngines[t.Symbol]; !ok {
+		if _, ok := c.activeEngines.Load(t.Symbol); !ok {
 			actions = append(actions, RebalanceAction{Symbol: t.Symbol, Diff: t.Notional, Priority: 4})
 		}
 	}
 	sort.Slice(actions, func(i, j int) bool {
 		return actions[i].Priority < actions[j].Priority
 	})
-	c.mu.Unlock()
 
 	// Simplified execution for non-durable
 	for _, a := range actions {
@@ -301,16 +319,11 @@ func (c *PortfolioController) executeAction(ctx context.Context, action Rebalanc
 			return err
 		}
 		c.orch.RemoveSymbol(action.Symbol)
+		c.activeEngines.Delete(action.Symbol)
 
-		c.mu.Lock()
-		delete(c.activeEngines, action.Symbol)
-		c.mu.Unlock()
 	case 2, 3: // Resize
-		c.mu.RLock()
-		eng, ok := c.activeEngines[action.Symbol]
-		c.mu.RUnlock()
-
-		if ok {
+		if val, ok := c.activeEngines.Load(action.Symbol); ok {
+			eng := val.(PortfolioEngine)
 			eng.SetOrderQuantity(target.Notional)
 
 			// Get config for persistence
@@ -351,9 +364,7 @@ func (c *PortfolioController) executeAction(ctx context.Context, action Rebalanc
 				return err
 			}
 
-			c.mu.Lock()
-			c.activeEngines[action.Symbol] = pEng
-			c.mu.Unlock()
+			c.activeEngines.Store(action.Symbol, pEng)
 		} else {
 			err := fmt.Errorf("engine for %s does not implement PortfolioEngine", action.Symbol)
 			c.logger.Error(err.Error())

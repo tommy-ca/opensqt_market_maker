@@ -40,14 +40,13 @@ func (s *PortfolioServiceServer) SimulateMargin(ctx context.Context, req *pb.Sim
 		proposals[sym] = pbu.ToGoDecimal(val)
 	}
 
-	health := s.marginSim.SimulateImpact(proposals)
-
-	// Simplified liquidation check: health < 0.1
-	wouldLiquidate := health.LessThan(decimal.NewFromFloat(0.1))
+	result := s.marginSim.SimulateImpact(proposals)
 
 	return &pb.SimulateMarginResponse{
-		ProjectedHealthScore: pbu.FromGoDecimal(health),
-		WouldLiquidate:       wouldLiquidate,
+		ProjectedHealthScore: pbu.FromGoDecimal(result.HealthScore),
+		WouldLiquidate:       result.WouldLiquidate,
+		AdjustedEquity:       pbu.FromGoDecimal(result.ProjectedAdjustedEquity),
+		MaintenanceMargin:    pbu.FromGoDecimal(result.ProjectedMaintenanceMargin),
 	}, nil
 }
 

@@ -183,6 +183,8 @@ type SimulateMarginResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	ProjectedHealthScore *decimal.Decimal       `protobuf:"bytes,1,opt,name=projected_health_score,json=projectedHealthScore,proto3" json:"projected_health_score,omitempty"`
 	WouldLiquidate       bool                   `protobuf:"varint,2,opt,name=would_liquidate,json=wouldLiquidate,proto3" json:"would_liquidate,omitempty"`
+	AdjustedEquity       *decimal.Decimal       `protobuf:"bytes,3,opt,name=adjusted_equity,json=adjustedEquity,proto3" json:"adjusted_equity,omitempty"`
+	MaintenanceMargin    *decimal.Decimal       `protobuf:"bytes,4,opt,name=maintenance_margin,json=maintenanceMargin,proto3" json:"maintenance_margin,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -229,6 +231,20 @@ func (x *SimulateMarginResponse) GetWouldLiquidate() bool {
 		return x.WouldLiquidate
 	}
 	return false
+}
+
+func (x *SimulateMarginResponse) GetAdjustedEquity() *decimal.Decimal {
+	if x != nil {
+		return x.AdjustedEquity
+	}
+	return nil
+}
+
+func (x *SimulateMarginResponse) GetMaintenanceMargin() *decimal.Decimal {
+	if x != nil {
+		return x.MaintenanceMargin
+	}
+	return nil
 }
 
 type GetTargetPositionsRequest struct {

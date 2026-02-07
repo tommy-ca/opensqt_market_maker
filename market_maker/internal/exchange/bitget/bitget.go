@@ -81,10 +81,10 @@ func (e *BitgetExchange) SignRequest(req *http.Request, body string) {
 	mac.Write([]byte(payload))
 	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	req.Header.Set("ACCESS-KEY", e.Config.APIKey)
+	req.Header.Set("ACCESS-KEY", string(e.Config.APIKey))
 	req.Header.Set("ACCESS-SIGN", signature)
 	req.Header.Set("ACCESS-TIMESTAMP", timestamp)
-	req.Header.Set("ACCESS-PASSPHRASE", e.Config.Passphrase)
+	req.Header.Set("ACCESS-PASSPHRASE", string(e.Config.Passphrase))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("locale", "en-US")
 }
@@ -899,8 +899,8 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 			"op": "login",
 			"args": []map[string]interface{}{
 				{
-					"apiKey":     e.Config.APIKey,
-					"passphrase": e.Config.Passphrase,
+					"apiKey":     string(e.Config.APIKey),
+					"passphrase": string(e.Config.Passphrase),
 					"timestamp":  timestamp,
 					"sign":       sign,
 				},

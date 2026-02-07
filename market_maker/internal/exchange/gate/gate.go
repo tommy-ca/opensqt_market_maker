@@ -223,7 +223,7 @@ func (e *GateExchange) placeOrderInternal(ctx context.Context, req *pb.PlaceOrde
 	timestamp := time.Now().Unix()
 	signature := e.SignREST("POST", path, "", string(jsonBody), timestamp)
 
-	httpReq.Header.Set("KEY", e.Config.APIKey)
+	httpReq.Header.Set("KEY", string(e.Config.APIKey))
 	httpReq.Header.Set("SIGN", signature)
 	httpReq.Header.Set("Timestamp", fmt.Sprintf("%d", timestamp))
 
@@ -333,7 +333,7 @@ func (e *GateExchange) CancelOrder(ctx context.Context, symbol string, orderID i
 	timestamp := time.Now().Unix()
 	signature := e.SignREST("DELETE", path, "", "", timestamp)
 
-	httpReq.Header.Set("KEY", e.Config.APIKey)
+	httpReq.Header.Set("KEY", string(e.Config.APIKey))
 	httpReq.Header.Set("SIGN", signature)
 	httpReq.Header.Set("Timestamp", fmt.Sprintf("%d", timestamp))
 
@@ -396,7 +396,7 @@ func (e *GateExchange) CancelAllOrders(ctx context.Context, symbol string, useMa
 	ts := time.Now().Unix()
 	sign := e.SignREST("DELETE", path, q.Encode(), "", ts)
 
-	req.Header.Set("KEY", e.Config.APIKey)
+	req.Header.Set("KEY", string(e.Config.APIKey))
 	req.Header.Set("SIGN", sign)
 	req.Header.Set("Timestamp", fmt.Sprintf("%d", ts))
 
@@ -464,7 +464,7 @@ func (e *GateExchange) GetOpenOrders(ctx context.Context, symbol string, useMarg
 	timestamp := time.Now().Unix()
 	signature := e.SignREST("GET", path, req.URL.RawQuery, "", timestamp)
 
-	req.Header.Set("KEY", e.Config.APIKey)
+	req.Header.Set("KEY", string(e.Config.APIKey))
 	req.Header.Set("SIGN", signature)
 	req.Header.Set("Timestamp", fmt.Sprintf("%d", timestamp))
 
@@ -554,7 +554,7 @@ func (e *GateExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
 	timestamp := time.Now().Unix()
 	signature := e.SignREST("GET", path, "", "", timestamp)
 
-	httpReq.Header.Set("KEY", e.Config.APIKey)
+	httpReq.Header.Set("KEY", string(e.Config.APIKey))
 	httpReq.Header.Set("SIGN", signature)
 	httpReq.Header.Set("Timestamp", fmt.Sprintf("%d", timestamp))
 
@@ -612,7 +612,7 @@ func (e *GateExchange) GetPositions(ctx context.Context, symbol string) ([]*pb.P
 	ts := time.Now().Unix()
 	sign := e.SignREST("GET", path, "", "", ts)
 
-	req.Header.Set("KEY", e.Config.APIKey)
+	req.Header.Set("KEY", string(e.Config.APIKey))
 	req.Header.Set("SIGN", sign)
 	req.Header.Set("Timestamp", fmt.Sprintf("%d", ts))
 
@@ -796,7 +796,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 			"payload": []string{"!all"}, // Subscribe all symbols
 			"auth": map[string]interface{}{
 				"method": "api_key",
-				"KEY":    e.Config.APIKey,
+				"KEY":    string(e.Config.APIKey),
 				"SIGN":   signature,
 			},
 		}

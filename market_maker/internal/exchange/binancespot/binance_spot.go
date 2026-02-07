@@ -65,7 +65,7 @@ func (e *BinanceSpotExchange) IsUnifiedMargin() bool {
 // SignRequest adds authentication headers and signature to the request
 func (e *BinanceSpotExchange) SignRequest(req *http.Request, body []byte) error {
 	// Add API Key header
-	req.Header.Set("X-MBX-APIKEY", e.Config.APIKey)
+	req.Header.Set("X-MBX-APIKEY", string(e.Config.APIKey))
 
 	// Get current query params
 	q := req.URL.Query()
@@ -1158,7 +1158,7 @@ func (e *BinanceSpotExchange) getListenKey(ctx context.Context) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("X-MBX-APIKEY", e.Config.APIKey)
+	req.Header.Set("X-MBX-APIKEY", string(e.Config.APIKey))
 
 	resp, err := e.HTTPClient.Do(req)
 	if err != nil {
@@ -1196,7 +1196,7 @@ func (e *BinanceSpotExchange) keepAliveListenKey(ctx context.Context, listenKey 
 			return
 		case <-ticker.C:
 			req, _ := http.NewRequestWithContext(ctx, "PUT", url, nil)
-			req.Header.Set("X-MBX-APIKEY", e.Config.APIKey)
+			req.Header.Set("X-MBX-APIKEY", string(e.Config.APIKey))
 			q := req.URL.Query()
 			q.Add("listenKey", listenKey)
 			req.URL.RawQuery = q.Encode()

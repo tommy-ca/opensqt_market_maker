@@ -2,6 +2,10 @@ package gate
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/hex"
+	"fmt"
 	"market_maker/internal/config"
 	"market_maker/internal/pb"
 	"market_maker/pkg/logging"
@@ -14,6 +18,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGateStartPriceStream(t *testing.T) {
@@ -30,9 +36,7 @@ func TestGateStartPriceStream(t *testing.T) {
 		if err != nil {
 			return
 		}
-		if !strings.Contains(string(msg), `"channel":"futures.tickers"`) {
-			t.Errorf("Expected tickers subscription, got %s", string(msg))
-		}
+		assert.Contains(t, string(msg), `"channel":"futures.tickers"`, "Expected tickers subscription")
 
 		// Send ticker update
 		// Gate V4 format
@@ -76,20 +80,14 @@ func TestGateStartPriceStream(t *testing.T) {
 	err := exchange.StartPriceStream(ctx, []string{"BTC_USDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
-	if err != nil {
-		t.Fatalf("StartPriceStream failed: %v", err)
-	}
+	require.NoError(t, err, "StartPriceStream failed")
 
 	select {
 	case change := <-priceChan:
-		if change.Symbol != "BTC_USDT" {
-			t.Errorf("Expected BTC_USDT, got %s", change.Symbol)
-		}
-		if !pbu.ToGoDecimal(change.Price).Equal(decimal.NewFromInt(45000)) {
-			t.Errorf("Expected 45000, got %v", change.Price)
-		}
+		assert.Equal(t, "BTC_USDT", change.Symbol)
+		assert.True(t, pbu.ToGoDecimal(change.Price).Equal(decimal.NewFromInt(45000)), "Expected 45000, got %v", change.Price)
 	case <-time.After(2 * time.Second):
-		t.Error("Timed out waiting for price update")
+		assert.Fail(t, "Timed out waiting for price update")
 	}
 }
 
@@ -109,12 +107,8 @@ func TestGateStartOrderStream(t *testing.T) {
 		}
 		// Expect futures.orders subscription with auth
 		// Check for "auth" and "sign"
-		if !strings.Contains(string(msg), `"channel":"futures.orders"`) {
-			t.Errorf("Expected orders subscription, got %s", string(msg))
-		}
-		if !strings.Contains(string(msg), `"auth"`) {
-			t.Errorf("Expected auth payload, got %s", string(msg))
-		}
+		assert.Contains(t, string(msg), `"channel":"futures.orders"`, "Expected orders subscription")
+		assert.Contains(t, string(msg), `"auth"`, "Expected auth payload")
 
 		// Send order update
 		updateMsg := `{
@@ -155,28 +149,20 @@ func TestGateStartOrderStream(t *testing.T) {
 	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
-	if err != nil {
-		t.Fatalf("StartOrderStream failed: %v", err)
-	}
+	require.NoError(t, err, "StartOrderStream failed")
 
 	select {
 	case update := <-orderChan:
-		if update.Symbol != "BTC_USDT" {
-			t.Errorf("Expected BTC_USDT, got %s", update.Symbol)
-		}
-		if update.Status != pb.OrderStatus_ORDER_STATUS_FILLED {
-			t.Errorf("Expected FILLED, got %s", update.Status)
-		}
+		assert.Equal(t, "BTC_USDT", update.Symbol)
+		assert.Equal(t, pb.OrderStatus_ORDER_STATUS_FILLED, update.Status)
 	case <-time.After(2 * time.Second):
-		t.Error("Timed out waiting for order update")
+		assert.Fail(t, "Timed out waiting for order update")
 	}
 }
 
 func TestGatePlaceOrder(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v4/futures/usdt/orders" {
-			t.Errorf("Expected path /api/v4/futures/usdt/orders, got %s", r.URL.Path)
-		}
+		assert.Equal(t, "/api/v4/futures/usdt/orders", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -214,20 +200,14 @@ func TestGatePlaceOrder(t *testing.T) {
 	}
 
 	order, err := exchange.PlaceOrder(context.Background(), req)
-	if err != nil {
-		t.Fatalf("PlaceOrder failed: %v", err)
-	}
+	require.NoError(t, err, "PlaceOrder failed")
 
-	if order.OrderId != 123456 {
-		t.Errorf("Expected OrderId 123456, got %d", order.OrderId)
-	}
+	assert.Equal(t, int64(123456), order.OrderId)
 }
 
 func TestGateGetAccount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v4/futures/usdt/accounts" {
-			t.Errorf("Expected path /api/v4/futures/usdt/accounts, got %s", r.URL.Path)
-		}
+		assert.Equal(t, "/api/v4/futures/usdt/accounts", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -249,26 +229,16 @@ func TestGateGetAccount(t *testing.T) {
 	exchange := NewGateExchange(cfg, logger)
 
 	acc, err := exchange.GetAccount(context.Background())
-	if err != nil {
-		t.Fatalf("GetAccount failed: %v", err)
-	}
+	require.NoError(t, err, "GetAccount failed")
 
-	if !pbu.ToGoDecimal(acc.AvailableBalance).Equal(decimal.NewFromInt(5000)) {
-		t.Errorf("Expected AvailableBalance 5000, got %v", acc.AvailableBalance)
-	}
-	if !pbu.ToGoDecimal(acc.TotalWalletBalance).Equal(decimal.NewFromInt(10000)) {
-		t.Errorf("Expected TotalWalletBalance 10000, got %v", acc.TotalWalletBalance)
-	}
+	assert.True(t, pbu.ToGoDecimal(acc.AvailableBalance).Equal(decimal.NewFromInt(5000)), "Expected AvailableBalance 5000, got %v", acc.AvailableBalance)
+	assert.True(t, pbu.ToGoDecimal(acc.TotalWalletBalance).Equal(decimal.NewFromInt(10000)), "Expected TotalWalletBalance 10000, got %v", acc.TotalWalletBalance)
 }
 
 func TestGateCancelOrder(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v4/futures/usdt/orders/12345" {
-			t.Errorf("Expected path /api/v4/futures/usdt/orders/12345, got %s", r.URL.Path)
-		}
-		if r.Method != "DELETE" {
-			t.Errorf("Expected method DELETE, got %s", r.Method)
-		}
+		assert.Equal(t, "/api/v4/futures/usdt/orders/12345", r.URL.Path)
+		assert.Equal(t, "DELETE", r.Method)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -289,51 +259,47 @@ func TestGateCancelOrder(t *testing.T) {
 	exchange := NewGateExchange(cfg, logger)
 
 	err := exchange.CancelOrder(context.Background(), "BTC_USDT", 12345, false)
-	if err != nil {
-		t.Fatalf("CancelOrder failed: %v", err)
-	}
+	require.NoError(t, err, "CancelOrder failed")
 }
 
 func TestGateSignREST(t *testing.T) {
+	secretKey := "test_secret"
 	cfg := &config.ExchangeConfig{
 		APIKey:    "test_key",
-		SecretKey: "test_secret",
+		SecretKey: config.Secret(secretKey),
 	}
 	logger, _ := logging.NewZapLogger("INFO")
 	exchange := NewGateExchange(cfg, logger)
 
 	timestamp := int64(123456789)
 	method := "POST"
-	path := "/api/v4/futures/usdt/orders"
+	urlPath := "/api/v4/futures/usdt/orders"
 	queryString := "param=value"
 	body := `{"symbol":"BTC_USDT"}`
 
-	// Gate V4 signature:
-	// Hex(HMAC_SHA512(secret, method + "\n" + path + "\n" + query + "\n" + Hex(SHA512(body)) + "\n" + timestamp))
+	// 3. Call SignREST directly
+	signature := exchange.SignREST(method, urlPath, queryString, body, timestamp)
 
-	// I'll trust my implementation if I follow the spec.
-	// But to verify, I need the expected value.
-	// I'll calculate expected value in the test?
-	// Or I can just check if headers are set correctly if I had a SignRequest method.
-	// `SignREST` returns signature string.
+	// 4. Calculate expected signature manually to verify correctness
+	// Payload format: method\nurl\nquery\nhex(sha512(body))\ntimestamp
+	hasher := sha512.New()
+	hasher.Write([]byte(body))
+	bodyHash := hex.EncodeToString(hasher.Sum(nil))
 
-	// Since I don't have a reference implementation in test utils, I will implement the test by computing it.
-	// But I'd be duplicating logic.
+	payload := fmt.Sprintf("%s\n%s\n%s\n%s\n%d",
+		method, urlPath, queryString, bodyHash, timestamp)
 
-	// Let's rely on the fact that I will port the legacy implementation which was likely correct.
-	// I will just test that it returns a non-empty string for now, or use a known test vector from Gate docs if I had one.
+	mac := hmac.New(sha512.New, []byte(secretKey))
+	mac.Write([]byte(payload))
+	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
-	sig := exchange.SignREST(method, path, queryString, body, timestamp)
-	if sig == "" {
-		t.Error("Signature is empty")
-	}
+	// 5. Assert
+	assert.Equal(t, expectedSignature, signature, "Signature mismatch")
 }
 
 func TestGateGetSymbolInfo(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v4/futures/usdt/contracts" {
-			t.Errorf("Expected path /api/v4/futures/usdt/contracts, got %s", r.URL.Path)
-		}
+		assert.Equal(t, "/api/v4/futures/usdt/contracts", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`[
@@ -353,25 +319,13 @@ func TestGateGetSymbolInfo(t *testing.T) {
 
 	// Test with Gate style symbol
 	info, err := ex.GetSymbolInfo(ctx, "BTC_USDT")
-	if err != nil {
-		t.Fatalf("GetSymbolInfo BTC_USDT failed: %v", err)
-	}
-	if info.Symbol != "BTC_USDT" {
-		t.Errorf("Expected BTC_USDT, got %s", info.Symbol)
-	}
-	if info.PricePrecision != 1 {
-		t.Errorf("Expected PricePrecision 1, got %d", info.PricePrecision)
-	}
-	if info.QuantityPrecision != 0 {
-		t.Errorf("Expected QuantityPrecision 0, got %d", info.QuantityPrecision)
-	}
+	require.NoError(t, err, "GetSymbolInfo BTC_USDT failed")
+	assert.Equal(t, "BTC_USDT", info.Symbol)
+	assert.Equal(t, int32(1), info.PricePrecision)
+	assert.Equal(t, int32(0), info.QuantityPrecision)
 
 	// Test with normalized symbol
 	info2, err := ex.GetSymbolInfo(ctx, "BTCUSDT")
-	if err != nil {
-		t.Fatalf("GetSymbolInfo BTCUSDT failed: %v", err)
-	}
-	if info2.Symbol != "BTC_USDT" {
-		t.Errorf("Expected BTC_USDT, got %s", info2.Symbol)
-	}
+	require.NoError(t, err, "GetSymbolInfo BTCUSDT failed")
+	assert.Equal(t, "BTC_USDT", info2.Symbol)
 }

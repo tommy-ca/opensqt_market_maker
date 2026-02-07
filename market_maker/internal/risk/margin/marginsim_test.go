@@ -50,8 +50,8 @@ func TestMarginSim_SimulateImpact(t *testing.T) {
 
 	// 1. Current Health (Base)
 	// Base Health = 1 - (1000 * 1.20 / 10000) = 0.88
-	baseHealth := sim.SimulateImpact(nil)
-	baseHealthF, _ := baseHealth.Float64()
+	baseResult := sim.SimulateImpact(nil)
+	baseHealthF, _ := baseResult.HealthScore.Float64()
 	assert.InDelta(t, 0.88, baseHealthF, 0.0001)
 
 	// 2. Open 0.1 BTC Position (Delta = +0.1, Current = 0)
@@ -61,7 +61,7 @@ func TestMarginSim_SimulateImpact(t *testing.T) {
 	impact := sim.SimulateImpact(map[string]decimal.Decimal{
 		"BTCUSDT": decimal.NewFromFloat(0.1),
 	})
-	impactF, _ := impact.Float64()
+	impactF, _ := impact.HealthScore.Float64()
 	assert.InDelta(t, 0.874, impactF, 0.0001)
 
 	// 3. Reduce Position (Delta = -0.02, Current = 0.1)
@@ -77,7 +77,7 @@ func TestMarginSim_SimulateImpact(t *testing.T) {
 	impact = sim.SimulateImpact(map[string]decimal.Decimal{
 		"BTCUSDT": decimal.NewFromFloat(-0.02),
 	})
-	impactF, _ = impact.Float64()
+	impactF, _ = impact.HealthScore.Float64()
 	assert.InDelta(t, 0.8752, impactF, 0.0001)
 
 	// 4. Spot Haircut Impact
@@ -93,7 +93,7 @@ func TestMarginSim_SimulateImpact(t *testing.T) {
 	impact = sim.SimulateImpact(map[string]decimal.Decimal{
 		"ETH": decimal.NewFromInt(10),
 	})
-	impactF, _ = impact.Float64()
+	impactF, _ = impact.HealthScore.Float64()
 	assert.InDelta(t, 0.8425, impactF, 0.0001)
 }
 
@@ -107,6 +107,6 @@ func TestMarginSim_SimulateImpact_Fallback(t *testing.T) {
 
 	// Base Health = 1 - (500 * 1.20 / 5000) = 1 - 600 / 5000 = 1 - 0.12 = 0.88
 	health := sim.SimulateImpact(nil)
-	healthF, _ := health.Float64()
+	healthF, _ := health.HealthScore.Float64()
 	assert.InDelta(t, 0.88, healthF, 0.0001)
 }

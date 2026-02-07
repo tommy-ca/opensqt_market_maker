@@ -3,6 +3,9 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExpandEnvVars(t *testing.T) {
@@ -54,9 +57,7 @@ func TestExpandEnvVars(t *testing.T) {
 			}
 
 			result := expandEnvVars(tt.input)
-			if result != tt.expected {
-				t.Errorf("expandEnvVars() = %q, want %q", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -64,9 +65,7 @@ func TestExpandEnvVars(t *testing.T) {
 func TestLoadConfigWithEnvVars(t *testing.T) {
 	// Create a temporary config file with env var placeholders
 	tmpFile, err := os.CreateTemp("", "config-test-*.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
 	configContent := `app:
@@ -118,9 +117,8 @@ timing:
   order_cleanup_interval: 10
 `
 
-	if _, err := tmpFile.Write([]byte(configContent)); err != nil {
-		t.Fatal(err)
-	}
+	_, err = tmpFile.Write([]byte(configContent))
+	require.NoError(t, err)
 	tmpFile.Close()
 
 	// Set environment variables
@@ -131,18 +129,12 @@ timing:
 
 	// Load config
 	config, err := LoadConfig(tmpFile.Name())
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
-	}
+	require.NoError(t, err, "LoadConfig() error")
 
 	// Verify environment variables were expanded
 	binanceConfig := config.Exchanges["binance"]
-	if binanceConfig.APIKey != "test_api_key_from_env" {
-		t.Errorf("APIKey = %q, want %q", binanceConfig.APIKey, "test_api_key_from_env")
-	}
-	if binanceConfig.SecretKey != "test_secret_key_from_env" {
-		t.Errorf("SecretKey = %q, want %q", binanceConfig.SecretKey, "test_secret_key_from_env")
-	}
+	assert.Equal(t, Secret("test_api_key_from_env"), binanceConfig.APIKey)
+	assert.Equal(t, Secret("test_secret_key_from_env"), binanceConfig.SecretKey)
 }
 
 func TestIsCriticalEnvVar(t *testing.T) {
@@ -165,9 +157,29 @@ func TestIsCriticalEnvVar(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isCriticalEnvVar(tt.envVar)
-			if result != tt.expected {
-				t.Errorf("isCriticalEnvVar(%q) = %v, want %v", tt.envVar, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "isCriticalEnvVar(%q)", tt.envVar)
 		})
 	}
+}
+
+func TestConfig_String(t *testing.T) {
+	cfg := &Config{
+		Exchanges: map[string]ExchangeConfig{
+			"test": {
+				APIKey:    Secret("my_super_secret_api_key"),
+				SecretKey: Secret("my_super_secret_secret_key"),
+			},
+		},
+	}
+	output := cfg.String()
+
+	// 1. Check for fixed mask
+	assert.Contains(t, output, "********", "output should contain masked characters")
+
+	// 2. Ensure full cleartext is GONE
+	assert.NotContains(t, output, "my_super_secret_api_key", "output should NOT contain full API key")
+	assert.NotContains(t, output, "my_super_secret_secret_key", "output should NOT contain full Secret key")
+
+	// 3. Ensure partial content is NOT leaked
+	assert.NotContains(t, output, "my_s", "output should NOT contain partial secret parts")
 }

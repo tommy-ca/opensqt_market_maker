@@ -6,6 +6,7 @@ import (
 	"market_maker/internal/core"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/pbu"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,4 +63,28 @@ func TestBinanceSpotExchange_GetFundingRate(t *testing.T) {
 	// Rate should be zero
 	r := pbu.ToGoDecimal(rate.Rate)
 	assert.True(t, r.IsZero())
+}
+
+func TestBinanceSpotExchange_SignRequest(t *testing.T) {
+	cfg := &config.ExchangeConfig{
+		APIKey:    "test_api_key",
+		SecretKey: "test_secret_key",
+	}
+	logger := &MockLogger{}
+	pool := concurrency.NewWorkerPool(concurrency.PoolConfig{}, logger)
+	exchange := NewBinanceSpotExchange(cfg, logger, pool)
+
+	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/account", nil)
+	assert.NoError(t, err)
+
+	err = exchange.SignRequest(req, nil)
+	assert.NoError(t, err)
+
+	// Verify API Key Header
+	assert.Equal(t, "test_api_key", req.Header.Get("X-MBX-APIKEY"))
+
+	// Verify Signature in Query
+	q := req.URL.Query()
+	assert.NotEmpty(t, q.Get("signature"))
+	assert.NotEmpty(t, q.Get("timestamp"))
 }

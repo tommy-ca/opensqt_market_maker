@@ -19,8 +19,16 @@ type RiskProfile struct {
 	IsUnified              bool
 }
 
+// SimulationResult holds the result of a margin simulation
+type SimulationResult struct {
+	HealthScore                decimal.Decimal
+	ProjectedAdjustedEquity    decimal.Decimal
+	ProjectedMaintenanceMargin decimal.Decimal
+	WouldLiquidate             bool
+}
+
 // IMarginSimulator is the interface that MarginSim implements, exposed for tools
 type IMarginSimulator interface {
-	SimulateImpact(proposals map[string]decimal.Decimal) decimal.Decimal // returns HealthScore
+	SimulateImpact(proposals map[string]decimal.Decimal) SimulationResult
 	GetRiskProfile() RiskProfile
 }

@@ -112,95 +112,35 @@ func (e *GridEngine) OnPriceUpdate(ctx context.Context, price *pb.PriceChange) e
 		isTriggeredNow = e.monitor.IsTriggered()
 	}
 
-	// 3. Calculate Target State
-	levels := e.getGridLevels()
-	target, err := e.strategy.CalculateTargetState(ctx, pVal, e.anchorPrice, atr, volFactor, isTriggeredNow, false, levels)
-	if err != nil {
-		return err
-	}
+	// 3. Calculate Actions
+	slots := e.getSlots()
+	actions := e.strategy.CalculateActions(pVal, e.anchorPrice, atr, volFactor, isTriggeredNow, slots)
 
-	// 4. Reconcile
-	actions := e.reconcile(target)
-
-	// 5. Execute Actions
+	// 4. Execute Actions
 	e.execute(ctx, actions)
 
-	// 6. Save State
+	// 5. Save State
 	e.saveState(ctx, pVal)
 
 	return nil
 }
 
-func (e *GridEngine) getGridLevels() []grid.GridLevel {
+func (e *GridEngine) getSlots() []grid.Slot {
 	mgrSlots := e.slotManager.GetSlots()
-	levels := make([]grid.GridLevel, 0, len(mgrSlots))
+	slots := make([]grid.Slot, 0, len(mgrSlots))
 	for _, s := range mgrSlots {
-		levels = append(levels, grid.GridLevel{
+		slots = append(slots, grid.Slot{
 			Price:          pbu.ToGoDecimal(s.Price),
 			PositionStatus: s.PositionStatus,
 			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
 		})
 	}
-	return levels
+	return slots
 }
 
-func (e *GridEngine) reconcile(target *core.TargetState) []*pb.OrderAction {
-	var actions []*pb.OrderAction
-
-	// Index existing active orders by ClientOrderID
-	activeOrders := make(map[string]*core.InventorySlot)
-	for _, s := range e.slotManager.GetSlots() {
-		if s.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED && s.ClientOid != "" {
-			activeOrders[s.ClientOid] = s
-		}
-	}
-
-	// 1. Find orders to Place or Keep
-	desiredOids := make(map[string]bool)
-	for _, to := range target.Orders {
-		desiredOids[to.ClientOrderID] = true
-
-		if _, exists := activeOrders[to.ClientOrderID]; !exists {
-			// PLACE missing order
-			actions = append(actions, &pb.OrderAction{
-				Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
-				Price: pbu.FromGoDecimal(to.Price),
-				Request: &pb.PlaceOrderRequest{
-					Symbol:        to.Symbol,
-					Side:          e.mapSide(to.Side),
-					Type:          pb.OrderType_ORDER_TYPE_LIMIT,
-					Quantity:      pbu.FromGoDecimal(to.Quantity),
-					Price:         pbu.FromGoDecimal(to.Price),
-					ClientOrderId: to.ClientOrderID,
-					ReduceOnly:    to.ReduceOnly,
-					PostOnly:      to.PostOnly,
-					TimeInForce:   pb.TimeInForce_TIME_IN_FORCE_GTC,
-				},
-			})
-		}
-	}
-
-	// 2. Find orders to Cancel (active but not desired)
-	for oid, s := range activeOrders {
-		if !desiredOids[oid] {
-			actions = append(actions, &pb.OrderAction{
-				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL,
-				Symbol:  e.strategy.GetSymbol(),
-				OrderId: s.OrderId,
-				Price:   s.Price,
-			})
-		}
-	}
-
-	return actions
-}
-
-func (e *GridEngine) mapSide(side string) pb.OrderSide {
-	if side == "BUY" {
-		return pb.OrderSide_ORDER_SIDE_BUY
-	}
-	return pb.OrderSide_ORDER_SIDE_SELL
-}
 func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
 	if len(actions) == 0 {
 		return

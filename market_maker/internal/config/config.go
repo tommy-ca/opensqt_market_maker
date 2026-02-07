@@ -345,10 +345,14 @@ func (c *Config) GetCurrentExchangeConfig() (*ExchangeConfig, error) {
 func (c *Config) String() string {
 	// Create a copy with sensitive data masked
 	configCopy := *c
-	for name, exchange := range configCopy.Exchanges {
-		exchange.APIKey = maskString(exchange.APIKey)
-		exchange.SecretKey = maskString(exchange.SecretKey)
-		configCopy.Exchanges[name] = exchange
+	configCopy.Exchanges = make(map[string]ExchangeConfig)
+	for name, exchange := range c.Exchanges {
+		// Explicitly mask sensitive fields
+		maskedExchange := exchange
+		maskedExchange.APIKey = Secret(maskString(string(exchange.APIKey)))
+		maskedExchange.SecretKey = Secret(maskString(string(exchange.SecretKey)))
+		maskedExchange.Passphrase = Secret(maskString(string(exchange.Passphrase)))
+		configCopy.Exchanges[name] = maskedExchange
 	}
 
 	data, _ := yaml.Marshal(configCopy)
@@ -387,10 +391,7 @@ func contains(slice []string, item string) bool {
 }
 
 func maskString(s string) string {
-	if len(s) <= 8 {
-		return strings.Repeat("*", len(s))
-	}
-	return s[:4] + strings.Repeat("*", len(s)-8) + s[len(s)-4:]
+	return "********"
 }
 
 // DefaultConfig returns a default configuration for testing

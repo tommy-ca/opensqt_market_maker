@@ -76,10 +76,10 @@ func (e *OKXExchange) SignRequest(req *http.Request, body string) error {
 	mac.Write([]byte(message))
 	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	req.Header.Set("OK-ACCESS-KEY", e.Config.APIKey)
+	req.Header.Set("OK-ACCESS-KEY", string(e.Config.APIKey))
 	req.Header.Set("OK-ACCESS-SIGN", signature)
 	req.Header.Set("OK-ACCESS-TIMESTAMP", timestamp)
-	req.Header.Set("OK-ACCESS-PASSPHRASE", e.Config.Passphrase)
+	req.Header.Set("OK-ACCESS-PASSPHRASE", string(e.Config.Passphrase))
 	req.Header.Set("Content-Type", "application/json")
 
 	return nil
@@ -1096,8 +1096,8 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 			"op": "login",
 			"args": []map[string]string{
 				{
-					"apiKey":     e.Config.APIKey,
-					"passphrase": e.Config.Passphrase,
+					"apiKey":     string(e.Config.APIKey),
+					"passphrase": string(e.Config.Passphrase),
 					"timestamp":  timestamp,
 					"sign":       sign,
 				},
@@ -1448,8 +1448,8 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 			"op": "login",
 			"args": []map[string]string{
 				{
-					"apiKey":     e.Config.APIKey,
-					"passphrase": e.Config.Passphrase,
+					"apiKey":     string(e.Config.APIKey),
+					"passphrase": string(e.Config.Passphrase),
 					"timestamp":  timestamp,
 					"sign":       sign,
 				},

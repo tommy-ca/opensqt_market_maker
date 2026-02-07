@@ -64,13 +64,13 @@ func (e *BybitExchange) SignRequest(req *http.Request, body string) error {
 	recvWindow := "5000"
 
 	// signature = HMAC_SHA256(timestamp + key + recv_window + body, secret)
-	payload := timestamp + e.Config.APIKey + recvWindow + body
+	payload := timestamp + string(e.Config.APIKey) + recvWindow + body
 
-	mac := hmac.New(sha256.New, []byte(e.Config.SecretKey))
+	mac := hmac.New(sha256.New, []byte(string(e.Config.SecretKey)))
 	mac.Write([]byte(payload))
 	signature := hex.EncodeToString(mac.Sum(nil))
 
-	req.Header.Set("X-BAPI-API-KEY", e.Config.APIKey)
+	req.Header.Set("X-BAPI-API-KEY", string(e.Config.APIKey))
 	req.Header.Set("X-BAPI-SIGN", signature)
 	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
 	req.Header.Set("X-BAPI-RECV-WINDOW", recvWindow)
@@ -993,7 +993,7 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 
 		authMsg := map[string]interface{}{
 			"op":   "auth",
-			"args": []interface{}{e.Config.APIKey, expires, signature},
+			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
 		client.Send(authMsg)
 
@@ -1329,7 +1329,7 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 
 		authMsg := map[string]interface{}{
 			"op":   "auth",
-			"args": []interface{}{e.Config.APIKey, expires, signature},
+			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
 		client.Send(authMsg)
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -13,24 +12,25 @@ import (
 )
 
 func createTestStore(t *testing.T, dbPath string) *SQLiteStore {
-	// Manual migration for tests using Atlas CLI (since it's removed from app deps)
-	atlasPath := "/home/tommyk/.local/share/mise/installs/aqua-atlas-community/1.0.0/atlas"
-
-	// Use absolute path for migrations to avoid relative path issues during tests
-	dirURL := "file:/home/tommyk/projects/quant/engine/opensqt_market_maker/market_maker/migrations"
-
-	cmd := exec.Command(atlasPath, "migrate", "apply",
-		"--dir", dirURL,
-		"--url", "sqlite://"+dbPath)
-
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("failed to apply migrations for test: %v\nOutput: %s", err, out)
-	}
-
 	store, err := NewSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
+
+	// Create schema inline to avoid dependency on external atlas tool
+	schema := `CREATE TABLE state (
+		id integer NOT NULL,
+		data text NOT NULL,
+		checksum blob NOT NULL,
+		updated_at integer NOT NULL,
+		PRIMARY KEY (id),
+		CONSTRAINT id_check CHECK (id = 1)
+	);`
+
+	if _, err := store.db.Exec(schema); err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+
 	return store
 }
 

@@ -81,6 +81,20 @@ func (m *LegManager) SyncState(ctx context.Context, exchange, symbol string) err
 	return nil
 }
 
+// GetSignedSize returns the signed size (positive for long, negative for short)
+func (m *LegManager) GetSignedSize(exchange, symbol string) decimal.Decimal {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if leg, ok := m.legs[fmt.Sprintf("%s:%s", exchange, symbol)]; ok {
+		if leg.Side == pb.OrderSide_ORDER_SIDE_SELL {
+			return leg.Size.Neg()
+		}
+		return leg.Size
+	}
+	return decimal.Zero
+}
+
 // UpdateFromOrder incrementally updates the state from an order update
 func (m *LegManager) UpdateFromOrder(update *pb.OrderUpdate) {
 	// For now, we prefer SyncState for accuracy because order updates
