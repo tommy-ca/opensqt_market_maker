@@ -176,7 +176,7 @@ func TestConfig_String(t *testing.T) {
 	output := cfg.String()
 
 	// 1. Check for fixed mask
-	assert.Contains(t, output, "********", "output should contain masked characters")
+	assert.Contains(t, output, "[REDACTED]", "output should contain masked characters")
 
 	// 2. Ensure full cleartext is GONE
 	assert.NotContains(t, output, "my_super_secret_api_key", "output should NOT contain full API key")

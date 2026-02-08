@@ -10,6 +10,14 @@ func (s Secret) String() string {
 	return "[REDACTED]"
 }
 
+// MarshalYAML ensures secrets are redacted when marshaled to YAML
+func (s Secret) MarshalYAML() (interface{}, error) {
+	if s == "" {
+		return "", nil
+	}
+	return "[REDACTED]", nil
+}
+
 // MarshalJSON ensures secrets are redacted when marshaled to JSON
 func (s Secret) MarshalJSON() ([]byte, error) {
 	return []byte(`"[REDACTED]"`), nil
