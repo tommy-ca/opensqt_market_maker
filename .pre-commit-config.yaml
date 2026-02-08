@@ -42,3 +42,29 @@ repos:
       - id: ruff-format
         name: ruff-format (python-connector)
         files: ^python-connector/
+
+  # Security Hooks
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+
+  # Formatting Hooks
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types: [markdown, yaml, json]
+
+  # Shell Hooks
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+
+  # Proto Hooks
+  - repo: https://github.com/bufbuild/buf
+    rev: v1.32.0
+    hooks:
+      - id: buf-lint
+        args: ["--config", "market_maker/buf.yaml"]
