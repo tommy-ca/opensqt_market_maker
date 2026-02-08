@@ -1,0 +1,67 @@
+package trading
+
+import (
+	"market_maker/internal/core"
+	"market_maker/internal/pb"
+	"market_maker/pkg/pbu"
+)
+
+// ReconcileOrders matches exchange open orders with local slots.
+// It returns the updated order and clientOID maps.
+func ReconcileOrders(
+	logger core.ILogger,
+	slots map[string]*core.InventorySlot,
+	orders []*pb.Order,
+) (map[int64]*core.InventorySlot, map[string]*core.InventorySlot, map[string]*pb.Order) {
+
+	orderMap := make(map[int64]*core.InventorySlot)
+	clientOMap := make(map[string]*core.InventorySlot)
+
+	// 1. Identify which slots SHOULD be locked
+	activePrices := make(map[string]*pb.Order)
+	for _, o := range orders {
+		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
+	}
+
+	// 2. Reconcile all slots
+	for priceKey, slot := range slots {
+		slot.Mu.Lock()
+		if order, ok := activePrices[priceKey]; ok {
+			// Slot has an active order on exchange
+			orderMap[order.OrderId] = slot
+			if order.ClientOrderId != "" {
+				clientOMap[order.ClientOrderId] = slot
+			}
+
+			slot.OrderId = order.OrderId
+			slot.ClientOid = order.ClientOrderId
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderStatus = order.Status
+			slot.OrderPrice = order.Price
+			slot.OrderSide = order.Side
+
+			delete(activePrices, priceKey)
+		} else {
+			// No active order on exchange for this slot
+			// If it was LOCKED or PENDING locally, it's now a "Zombie" and should be freed
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
+				logger.Warn("Clearing zombie slot during sync", "price", priceKey, "old_order_id", slot.OrderId)
+				slot.OrderId = 0
+				slot.ClientOid = ""
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
+			}
+		}
+		slot.Mu.Unlock()
+	}
+
+	return orderMap, clientOMap, activePrices
+}
+
+// MapRemainingOrdersToPositions attempts to map exchange orders that didn't match a grid price
+// to positions or other state. (Placeholder for future drift correction)
+func MapRemainingOrdersToPositions(logger core.ILogger, remainingOrders map[string]*pb.Order) {
+	for price, order := range remainingOrders {
+		logger.Warn("Unmatched exchange order detected", "price", price, "order_id", order.OrderId)
+	}
+}

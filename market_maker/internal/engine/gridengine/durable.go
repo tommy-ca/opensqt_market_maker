@@ -4,7 +4,6 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/engine"
-	"market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -25,7 +24,7 @@ func NewDBOSGridEngine(
 	exchanges map[string]core.IExchange,
 	executor core.IOrderExecutor,
 	monitor core.IRiskMonitor,
-	store simple.Store,
+	store core.IStateStore,
 	logger core.ILogger,
 	slotMgr core.IPositionManager,
 	cfg Config,

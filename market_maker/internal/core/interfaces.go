@@ -191,6 +191,12 @@ type IHealthMonitor interface {
 	IsHealthy() bool
 }
 
+// IStateStore defines the interface for state persistence
+type IStateStore interface {
+	SaveState(ctx context.Context, state *pb.State) error
+	LoadState(ctx context.Context) (*pb.State, error)
+}
+
 // ILogger defines the interface for logging
 type ILogger interface {
 	Debug(msg string, fields ...interface{})

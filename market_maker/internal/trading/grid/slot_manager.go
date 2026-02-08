@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading"
 	"market_maker/pkg/pbu"
 	"sync"
 	"sync/atomic"
@@ -69,45 +70,11 @@ func (m *SlotManager) SyncOrders(orders []*pb.Order) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 1. Identify which slots SHOULD be locked
-	activePrices := make(map[string]*pb.Order)
-	for _, o := range orders {
-		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
-	}
+	om, com, remaining := trading.ReconcileOrders(m.logger, m.slots, orders)
+	m.orderMap = om
+	m.clientOMap = com
 
-	// 2. Reset mappings
-	m.orderMap = make(map[int64]*core.InventorySlot)
-	m.clientOMap = make(map[string]*core.InventorySlot)
-
-	// 3. Reconcile all slots
-	for priceKey, slot := range m.slots {
-		slot.Mu.Lock()
-		if order, ok := activePrices[priceKey]; ok {
-			// Slot has an active order on exchange
-			m.orderMap[order.OrderId] = slot
-			if order.ClientOrderId != "" {
-				m.clientOMap[order.ClientOrderId] = slot
-			}
-
-			slot.OrderId = order.OrderId
-			slot.ClientOid = order.ClientOrderId
-			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
-			slot.OrderStatus = order.Status
-			slot.OrderPrice = order.Price
-			slot.OrderSide = order.Side
-		} else {
-			// No active order on exchange for this slot
-			// If it was LOCKED or PENDING locally, it's now a "Zombie" and should be freed
-			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
-				m.logger.Warn("Clearing zombie slot during sync", "price", priceKey, "old_order_id", slot.OrderId)
-				slot.OrderId = 0
-				slot.ClientOid = ""
-				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
-				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
-			}
-		}
-		slot.Mu.Unlock()
-	}
+	trading.MapRemainingOrdersToPositions(m.logger, remaining)
 }
 
 // OnOrderUpdate handles an order execution report
@@ -255,9 +222,23 @@ func (m *SlotManager) CalculateAdjustments(ctx context.Context, newPrice decimal
 }
 
 func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error {
+	type updateItem struct {
+		slot *core.InventorySlot
+		res  core.OrderActionResult
+	}
+	var updates []updateItem
+
+	// Phase 1: Identify slots and collect results
 	for _, res := range results {
 		priceVal := pbu.ToGoDecimal(res.Action.Price)
 		slot := m.GetOrCreateSlot(priceVal)
+		updates = append(updates, updateItem{slot: slot, res: res})
+	}
+
+	// Phase 2: Apply to slots and manager maps
+	for _, item := range updates {
+		slot := item.slot
+		res := item.res
 
 		slot.Mu.Lock()
 		if res.Error != nil {
@@ -270,6 +251,14 @@ func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error
 			slot.OrderPrice = res.Order.Price
 			slot.OrderStatus = res.Order.Status
 
+			// Update manager maps while holding slot lock? No, that's what we want to avoid.
+			// But we are ALREADY holding slot.Mu here.
+			// The rule is: Always acquire m.mu BEFORE slot.Mu.
+			// So I should release slot.Mu, or acquire m.mu before slot.Mu.
+		}
+		slot.Mu.Unlock()
+
+		if res.Error == nil && res.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && res.Order != nil {
 			m.mu.Lock()
 			m.orderMap[res.Order.OrderId] = slot
 			if res.Order.ClientOrderId != "" {
@@ -277,7 +266,6 @@ func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error
 			}
 			m.mu.Unlock()
 		}
-		slot.Mu.Unlock()
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"market_maker/internal/core"
-	"market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
 	"market_maker/internal/trading/grid"
 	"market_maker/pkg/pbu"
@@ -25,7 +24,7 @@ type GridCoordinator struct {
 	strategy    *grid.Strategy
 	slotManager core.IPositionManager
 	monitor     core.IRiskMonitor
-	store       simple.Store
+	store       core.IStateStore
 	logger      core.ILogger
 	executor    IGridExecutor
 
@@ -38,7 +37,7 @@ func NewGridCoordinator(
 	cfg Config,
 	slotMgr core.IPositionManager,
 	monitor core.IRiskMonitor,
-	store simple.Store,
+	store core.IStateStore,
 	logger core.ILogger,
 	executor IGridExecutor,
 ) *GridCoordinator {
@@ -75,23 +74,40 @@ func (c *GridCoordinator) Start(ctx context.Context, exch core.IExchange) error 
 	if err == nil && state != nil {
 		_ = c.slotManager.RestoreState(state.Slots)
 		c.anchorPrice = pbu.ToGoDecimal(state.LastPrice)
-		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice)
+		c.isRiskTriggered = state.IsRiskTriggered
+		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice, "risk_triggered", c.isRiskTriggered)
 	}
 
 	// 2. Exchange Reconciliation (The Reality Check)
 	if exch != nil {
 		c.logger.Info("Reconciling with exchange...")
-		openOrders, err := exch.GetOpenOrders(ctx, c.symbol, false)
-		if err != nil {
-			return fmt.Errorf("failed to fetch open orders during boot: %w", err)
+
+		var openOrders []*pb.Order
+		var positions []*pb.Position
+		var ordersErr, posErr error
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			openOrders, ordersErr = exch.GetOpenOrders(ctx, c.symbol, false)
+		}()
+
+		go func() {
+			defer wg.Done()
+			positions, posErr = exch.GetPositions(ctx, c.symbol)
+		}()
+
+		wg.Wait()
+
+		if ordersErr != nil {
+			return fmt.Errorf("failed to fetch open orders during boot: %w", ordersErr)
 		}
 
 		c.slotManager.SyncOrders(openOrders)
 		c.logger.Info("Exchange reconciliation complete", "open_orders", len(openOrders))
 
-		// 3. Position Sync (Inventory Reconciliation)
-		positions, err := exch.GetPositions(ctx, c.symbol)
-		if err == nil {
+		if posErr == nil {
 			totalPos := decimal.Zero
 			for _, p := range positions {
 				totalPos = totalPos.Add(pbu.ToGoDecimal(p.Size))
@@ -99,7 +115,7 @@ func (c *GridCoordinator) Start(ctx context.Context, exch core.IExchange) error 
 			c.logger.Info("Current exchange position", "size", totalPos)
 			c.slotManager.RestoreFromExchangePosition(totalPos)
 		} else {
-			c.logger.Error("Failed to fetch positions during boot", "error", err)
+			c.logger.Error("Failed to fetch positions during boot", "error", posErr)
 		}
 	}
 
@@ -107,10 +123,13 @@ func (c *GridCoordinator) Start(ctx context.Context, exch core.IExchange) error 
 }
 
 func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChange) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	var riskActions []*pb.OrderAction
+	var strategyActions []*pb.OrderAction
+	var pVal decimal.Decimal
 
-	pVal := pbu.ToGoDecimal(price.Price)
+	// Phase 1: State access and calculation (Locked)
+	c.mu.Lock()
+	pVal = pbu.ToGoDecimal(price.Price)
 
 	if c.anchorPrice.IsZero() {
 		c.anchorPrice = pVal
@@ -129,12 +148,11 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	// 2. Handle Risk Transition
 	if isTriggeredNow && !c.isRiskTriggered {
 		c.logger.Warn("Risk Triggered! Canceling all Buy orders")
-		actions, _ := c.slotManager.CancelAllBuyOrders(ctx)
-		c.executor.Execute(ctx, actions)
+		riskActions, _ = c.slotManager.CancelAllBuyOrders(ctx)
 	}
 	c.isRiskTriggered = isTriggeredNow
 
-	// 3. Calculate Actions
+	// 3. Calculate Strategy Actions
 	mgrSlots := c.slotManager.GetSlots()
 	stratSlots := make([]grid.Slot, 0, len(mgrSlots))
 	for _, s := range mgrSlots {
@@ -149,12 +167,18 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 		})
 	}
 
-	actions := c.strategy.CalculateActions(pVal, c.anchorPrice, atr, volFactor, isTriggeredNow, stratSlots)
+	strategyActions = c.strategy.CalculateActions(pVal, c.anchorPrice, atr, volFactor, isTriggeredNow, stratSlots)
+	c.mu.Unlock()
 
-	// 4. Execute Actions
-	c.executor.Execute(ctx, actions)
+	// Phase 2: Execution (Unlocked - prevents blocking hot path)
+	if len(riskActions) > 0 {
+		c.executor.Execute(ctx, riskActions)
+	}
+	if len(strategyActions) > 0 {
+		c.executor.Execute(ctx, strategyActions)
+	}
 
-	// 5. Save State
+	// Phase 3: Persistence
 	c.saveState(ctx, pVal)
 
 	return nil
@@ -163,9 +187,10 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) {
 	snap := c.slotManager.GetSnapshot()
 	state := &pb.State{
-		Slots:          snap.Slots,
-		LastPrice:      pbu.FromGoDecimal(lastPrice),
-		LastUpdateTime: time.Now().UnixNano(),
+		Slots:           snap.Slots,
+		LastPrice:       pbu.FromGoDecimal(lastPrice),
+		LastUpdateTime:  time.Now().UnixNano(),
+		IsRiskTriggered: c.isRiskTriggered,
 	}
 	_ = c.store.SaveState(ctx, state)
 }

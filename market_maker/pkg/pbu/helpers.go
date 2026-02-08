@@ -5,26 +5,15 @@ import (
 	"github.com/shopspring/decimal"
 	googletype "google.golang.org/genproto/googleapis/type/decimal"
 	"strings"
-	"sync"
-	"time"
 )
 
 // ToGoDecimal converts a google.type.Decimal to a shopspring decimal.Decimal.
 // ... (rest of the file)
 // ...
 
-var (
-	idMu    sync.Mutex
-	lastSec int64
-	idSeq   int
-)
-
-// GenerateCompactOrderID generates a compact ClientOrderID (< 18 chars)
-// Format: {price_int}_{side}_{timestamp}{seq}
-func GenerateCompactOrderID(price decimal.Decimal, side string, priceDecimals int) string {
-	idMu.Lock()
-	defer idMu.Unlock()
-
+// GenerateDeterministicOrderID generates a stable ClientOrderID for a given grid level.
+// It is based on (StrategyID, Price, Side) to prevent double-fills on restart.
+func GenerateDeterministicOrderID(strategyID string, price decimal.Decimal, side string, priceDecimals int) string {
 	priceInt := price.Mul(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals)))).Round(0).IntPart()
 
 	sideCode := "B"
@@ -32,14 +21,13 @@ func GenerateCompactOrderID(price decimal.Decimal, side string, priceDecimals in
 		sideCode = "S"
 	}
 
-	now := time.Now().Unix()
-	if now != lastSec {
-		lastSec = now
-		idSeq = 0
-	}
-	idSeq++
+	return fmt.Sprintf("%s_%d_%s", strategyID, priceInt, sideCode)
+}
 
-	return fmt.Sprintf("%d_%s_%d%03d", priceInt, sideCode, now, idSeq)
+// GenerateCompactOrderID generates a compact ClientOrderID (< 18 chars)
+// Deprecated: Use GenerateDeterministicOrderID for grid trading.
+func GenerateCompactOrderID(price decimal.Decimal, side string, priceDecimals int) string {
+	return GenerateDeterministicOrderID("G", price, side, priceDecimals)
 }
 
 // AddBrokerPrefix prepends broker-specific prefixes for commission tracking
@@ -78,7 +66,8 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 		return decimal.Zero, "", false
 	}
 
-	priceInt, err := decimal.NewFromString(parts[0])
+	// Format is {strategyID}_{priceInt}_{sideCode}
+	priceInt, err := decimal.NewFromString(parts[1])
 	if err != nil {
 		return decimal.Zero, "", false
 	}
@@ -86,7 +75,7 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 	price := priceInt.Div(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals))))
 
 	side := "BUY"
-	if parts[1] == "S" {
+	if parts[2] == "S" {
 		side = "SELL"
 	}
 

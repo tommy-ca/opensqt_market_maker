@@ -20,7 +20,7 @@ import (
 
 // SimpleEngine implements the engine.Engine interface
 type SimpleEngine struct {
-	store           Store
+	store           core.IStateStore
 	positionManager core.IPositionManager
 	orderExecutor   core.IOrderExecutor
 	riskMonitor     core.IRiskMonitor
@@ -42,7 +42,7 @@ type SimpleEngine struct {
 
 // NewSimpleEngine creates a new workflow engine
 func NewSimpleEngine(
-	store Store,
+	store core.IStateStore,
 	pm core.IPositionManager,
 	oe core.IOrderExecutor,
 	rm core.IRiskMonitor,

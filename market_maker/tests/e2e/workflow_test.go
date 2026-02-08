@@ -14,6 +14,7 @@ import (
 	"market_maker/internal/pb"
 	"market_maker/internal/risk"
 	"market_maker/internal/trading/grid"
+	"market_maker/migrations"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
@@ -30,16 +31,8 @@ func initTestDB(t *testing.T, dbPath string) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Initialize schema manually since Atlas isn't running in tests
-	// Based on e2e_test.go implementation
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS state (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			data TEXT NOT NULL,
-			checksum BLOB NOT NULL,
-			updated_at INTEGER NOT NULL
-		);
-	`)
+	// Initialize schema from shared migration logic
+	_, err = db.Exec(migrations.InitSchema)
 	require.NoError(t, err)
 }
 
@@ -109,10 +102,11 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for orders to be placed
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) >= 2
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed orders")
 
 	orders := exch.GetOrders()
-	require.GreaterOrEqual(t, len(orders), 2, "Should have placed orders")
 
 	// Identify a Buy order to fill
 	var targetOrder *pb.Order
@@ -240,9 +234,11 @@ func TestE2E_HardCrash_OfflineFill(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for orders
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) > 0
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed orders")
+
 	orders := exch.GetOrders()
-	require.NotEmpty(t, orders)
 
 	var targetOrder *pb.Order
 	for _, o := range orders {
@@ -397,7 +393,10 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait and verify normal orders
-	time.Sleep(50 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) > 0
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed normal orders")
+
 	orders1 := exch.GetOrders()
 	assert.NotEmpty(t, orders1)
 	lastID := int64(0)
@@ -418,7 +417,9 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	rm.HandleKlineUpdate(spikeCandle)
 
 	// Wait for async processing
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return rm.IsTriggered()
+	}, 1*time.Second, 10*time.Millisecond, "Risk Monitor should be triggered")
 
 	assert.True(t, rm.IsTriggered(), "Risk Monitor should be triggered")
 
@@ -431,7 +432,8 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	err = eng.OnPriceUpdate(ctx, updateRisk)
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
+	// Wait for processing
+	time.Sleep(50 * time.Millisecond) // This sleep is fine as we are checking for the ABSENCE of new orders, so we need to wait a bit
 
 	orders2 := exch.GetOrders()
 	// Assert: No *new* Buy orders placed

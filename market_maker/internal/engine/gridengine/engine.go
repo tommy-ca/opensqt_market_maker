@@ -4,7 +4,6 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/engine"
-	"market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/retry"
@@ -27,7 +26,7 @@ func NewGridEngine(
 	exchanges map[string]core.IExchange,
 	executor core.IOrderExecutor,
 	monitor core.IRiskMonitor,
-	store simple.Store,
+	store core.IStateStore,
 	logger core.ILogger,
 	execPool *concurrency.WorkerPool,
 	slotMgr core.IPositionManager,
