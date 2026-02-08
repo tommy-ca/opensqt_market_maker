@@ -247,6 +247,9 @@ func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error
 			slot.OrderId = res.Order.OrderId
 			slot.ClientOid = res.Order.ClientOrderId
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderSide = res.Order.Side
+			slot.OrderPrice = res.Order.Price
+			slot.OrderStatus = res.Order.Status
 
 			m.mu.Lock()
 			m.orderMap[res.Order.OrderId] = slot

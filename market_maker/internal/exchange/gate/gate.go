@@ -415,11 +415,6 @@ func (e *GateExchange) CancelAllOrders(ctx context.Context, symbol string, useMa
 }
 
 func (e *GateExchange) GetOrder(ctx context.Context, symbol string, orderID int64, clientOrderID string, useMargin bool) (*pb.Order, error) {
-	baseURL := e.Config.BaseURL
-	if baseURL == "" {
-		baseURL = defaultGateURL
-	}
-
 	if orderID == 0 && clientOrderID != "" {
 		// Gate requires order ID for the detail endpoint,
 		// but we can query by text (clientOID) using the list endpoint

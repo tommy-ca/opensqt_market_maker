@@ -60,7 +60,6 @@ type SuperPositionManager struct {
 	anchorPrice decimal.Decimal
 
 	// State tracking
-	insufficientMargin bool
 	marginLockUntil    int64 // atomic timestamp
 	marginLockDuration time.Duration
 
@@ -888,11 +887,6 @@ func (spm *SuperPositionManager) handleOrderRejected(update *pb.OrderUpdate) {}
 
 func (spm *SuperPositionManager) isMarginLocked() bool {
 	return time.Now().UnixNano() < atomic.LoadInt64(&spm.marginLockUntil)
-}
-
-func (spm *SuperPositionManager) setMarginLock() {
-	atomic.StoreInt64(&spm.marginLockUntil, time.Now().Add(spm.marginLockDuration).UnixNano())
-	spm.insufficientMargin = true
 }
 
 // cleanupProcessedUpdates periodically removes old entries from the processedUpdates map

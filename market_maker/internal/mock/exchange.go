@@ -16,7 +16,6 @@ import (
 type MockExchange struct {
 	name           string
 	orders         map[int64]*pb.Order
-	orderMapMu     sync.RWMutex
 	orderIDCounter int64
 	clientOrderMap map[string]int64
 	account        *pb.Account
@@ -211,7 +210,7 @@ func (m *MockExchange) CancelOrder(ctx context.Context, symbol string, orderID i
 
 func (m *MockExchange) BatchCancelOrders(ctx context.Context, symbol string, orderIDs []int64, useMargin bool) error {
 	for _, id := range orderIDs {
-		m.CancelOrder(ctx, symbol, id, useMargin)
+		_ = m.CancelOrder(ctx, symbol, id, useMargin)
 	}
 	return nil
 }
@@ -643,13 +642,26 @@ func (m *MockExchange) SimulateOrderFill(orderID int64, filledQty decimal.Decima
 
 	// Update positions
 	symbol := order.Symbol
-	currentSize := m.GetPosition(symbol)
+	var currentSize decimal.Decimal
+	if pos, ok := m.positions[symbol]; ok && len(pos) > 0 {
+		currentSize = pbu.ToGoDecimal(pos[0].Size)
+	} else {
+		currentSize = decimal.Zero
+	}
+
 	delta := filledQty
 	if order.Side == pb.OrderSide_ORDER_SIDE_SELL {
 		delta = delta.Neg()
 	}
 	newSize := currentSize.Add(delta)
-	m.SetPosition(symbol, newSize)
+
+	m.positions[symbol] = []*pb.Position{
+		{
+			Symbol:    symbol,
+			Size:      pbu.FromGoDecimal(newSize),
+			MarkPrice: pbu.FromGoDecimal(decimal.NewFromInt(100)),
+		},
+	}
 
 	// Notify order stream
 	if m.isOrderStreamRunning {

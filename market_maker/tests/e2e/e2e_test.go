@@ -34,7 +34,7 @@ func init() {
 	}
 }
 
-func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.SimpleEngine, *position.SuperPositionManager, *risk.RiskMonitor) {
+func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.SimpleEngine, *position.SuperPositionManager, *risk.RiskMonitor, func()) {
 	logger, _ := logging.NewZapLogger("DEBUG")
 
 	// Config
@@ -88,7 +88,11 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 
 	engine := simple.NewSimpleEngine(store, pm, orderExecutor, riskMonitor, logger)
 
-	return engine.(*simple.SimpleEngine), pm, riskMonitor
+	cleanup := func() {
+		store.Close()
+	}
+
+	return engine.(*simple.SimpleEngine), pm, riskMonitor, cleanup
 }
 
 func TestE2E_CrashRecovery(t *testing.T) {
@@ -99,7 +103,8 @@ func TestE2E_CrashRecovery(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Initial Start
-	engine, pm, _ := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	defer cleanup()
 	if err := engine.Start(ctx); err != nil {
 		t.Fatalf("Engine start failed: %v", err)
 	}
@@ -132,7 +137,8 @@ func TestE2E_CrashRecovery(t *testing.T) {
 	engine.Stop()
 
 	// 3. RECOVER
-	engineRec, pmRec, _ := setupEngine(t, exch, testDB)
+	engineRec, pmRec, _, cleanupRec := setupEngine(t, exch, testDB)
+	defer cleanupRec()
 	if err := engineRec.Start(ctx); err != nil {
 		t.Fatalf("Recovery start failed: %v", err)
 	}
@@ -158,7 +164,8 @@ func TestE2E_RiskProtection(t *testing.T) {
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, rm := setupEngine(t, exch, testDB)
+	engine, pm, rm, cleanup := setupEngine(t, exch, testDB)
+	defer cleanup()
 	if err := rm.Start(ctx); err != nil {
 		t.Fatalf("Failed to start risk monitor: %v", err)
 	}
@@ -220,7 +227,8 @@ func TestE2E_TradingFlow(t *testing.T) {
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, _ := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	defer cleanup()
 	engine.Start(ctx)
 
 	// Start order stream to feed engine

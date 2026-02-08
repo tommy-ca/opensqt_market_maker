@@ -16,6 +16,7 @@ type Slot struct {
 	SlotStatus     pb.SlotStatus
 	OrderSide      pb.OrderSide
 	OrderPrice     decimal.Decimal
+	OrderId        int64
 }
 
 // StrategyConfig holds the parameters for the grid strategy
@@ -210,17 +211,17 @@ func (s *Strategy) decideActionForSlot(
 		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
 			// Force cancel all buys if risk triggered
 			if isRiskTriggered {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
+				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: slot.OrderId}
 			}
 
 			minPrice := currentPrice.Sub(interval.Mul(decimal.NewFromInt(int64(s.cfg.BuyWindowSize))))
 			if slot.OrderPrice.LessThan(minPrice) || slot.OrderPrice.GreaterThan(currentPrice) {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
+				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: slot.OrderId}
 			}
 		} else {
 			maxPrice := currentPrice.Add(interval.Mul(decimal.NewFromInt(int64(s.cfg.SellWindowSize))))
 			if slot.OrderPrice.GreaterThan(maxPrice) || slot.OrderPrice.LessThan(currentPrice) {
-				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: 0}
+				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, Symbol: s.cfg.Symbol, Price: pbu.FromGoDecimal(slot.Price), OrderId: slot.OrderId}
 			}
 		}
 	}

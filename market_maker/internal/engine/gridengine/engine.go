@@ -33,9 +33,6 @@ type GridEngine struct {
 
 	// Concurrency
 	execPool *concurrency.WorkerPool
-
-	// Status tracking
-	isRiskTriggered bool
 }
 
 func NewGridEngine(
@@ -136,6 +133,7 @@ func (e *GridEngine) getSlots() []grid.Slot {
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
 			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
+			OrderId:        s.OrderId,
 		})
 	}
 	return slots

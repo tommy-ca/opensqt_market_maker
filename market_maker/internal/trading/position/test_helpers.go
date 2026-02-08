@@ -10,33 +10,6 @@ import (
 
 // Mock implementations for testing
 
-type mockOrderExecutor struct {
-	placedOrders []*pb.Order
-	cancelledIDs []int64
-}
-
-func (m *mockOrderExecutor) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.Order, error) {
-	order := &pb.Order{
-		OrderId: int64(len(m.placedOrders) + 1000), ClientOrderId: req.ClientOrderId,
-		Symbol: req.Symbol, Side: req.Side, Status: pb.OrderStatus_ORDER_STATUS_NEW,
-	}
-	m.placedOrders = append(m.placedOrders, order)
-	return order, nil
-}
-
-func (m *mockOrderExecutor) BatchPlaceOrders(ctx context.Context, orders []*pb.PlaceOrderRequest) ([]*pb.Order, bool) {
-	res := make([]*pb.Order, len(orders))
-	for i, r := range orders {
-		res[i], _ = m.PlaceOrder(ctx, r)
-	}
-	return res, false
-}
-
-func (m *mockOrderExecutor) BatchCancelOrders(ctx context.Context, symbol string, orderIds []int64, useMargin bool) error {
-	m.cancelledIDs = append(m.cancelledIDs, orderIds...)
-	return nil
-}
-
 type mockRiskMonitor struct {
 	triggered bool
 	vol       float64

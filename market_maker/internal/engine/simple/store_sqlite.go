@@ -43,7 +43,9 @@ func (s *SQLiteStore) SaveState(ctx context.Context, state *pb.State) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	// Marshal state
 	data, err := json.Marshal(state)
