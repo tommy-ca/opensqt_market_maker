@@ -95,6 +95,11 @@ func (e *SimpleEngine) Start(ctx context.Context) error {
 		e.logger.Info("No persisted state found, starting fresh")
 	}
 
+	// Exchange Reconciliation (The Reality Check)
+	// SimpleEngine needs access to an exchange to reconcile
+	// Currently it doesn't store one. I'll add it if needed or just skip here
+	// for generic workflow engine.
+
 	return nil
 }
 

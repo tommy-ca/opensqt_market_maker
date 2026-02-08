@@ -81,6 +81,7 @@ func (m *MockPositionManagerForRollback) UpdateOrderIndex(orderID int64, clientO
 func (m *MockPositionManagerForRollback) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	return nil
 }
+func (m *MockPositionManagerForRollback) SyncOrders(orders []*pb.Order) {}
 
 func TestOnOrderUpdate_PersistenceFailure_DoesNotMutateState(t *testing.T) {
 	// Setup

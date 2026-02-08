@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -39,6 +40,9 @@ type MockExchange struct {
 	fundingRates     map[string]decimal.Decimal
 	histFundingRates map[string][]*pb.FundingRate
 	tickers          map[string]*pb.Ticker
+
+	// Fault injection
+	ErrorChance float64
 }
 
 func NewMockExchange(name string) *MockExchange {
@@ -56,7 +60,21 @@ func NewMockExchange(name string) *MockExchange {
 		fundingRates:     make(map[string]decimal.Decimal),
 		histFundingRates: make(map[string][]*pb.FundingRate),
 		tickers:          make(map[string]*pb.Ticker),
+		ErrorChance:      0.0,
 	}
+}
+
+func (m *MockExchange) SetErrorChance(chance float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ErrorChance = chance
+}
+
+func (m *MockExchange) shouldError() bool {
+	if m.ErrorChance <= 0 {
+		return false
+	}
+	return rand.Float64() < m.ErrorChance
 }
 
 func (m *MockExchange) SetHistoricalFundingRates(symbol string, rates []*pb.FundingRate) {
@@ -103,6 +121,10 @@ func (m *MockExchange) CheckHealth(ctx context.Context) error {
 
 // PlaceOrder places an order into the mock exchange.
 func (m *MockExchange) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.Order, error) {
+	if m.shouldError() {
+		return nil, fmt.Errorf("injected error: rate limit exceeded (429)")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -176,6 +198,10 @@ func (m *MockExchange) BatchPlaceOrders(ctx context.Context, orders []*pb.PlaceO
 }
 
 func (m *MockExchange) CancelOrder(ctx context.Context, symbol string, orderID int64, useMargin bool) error {
+	if m.shouldError() {
+		return fmt.Errorf("injected error: internal server error (500)")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

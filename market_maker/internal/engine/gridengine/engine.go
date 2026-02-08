@@ -6,33 +6,21 @@ import (
 	"market_maker/internal/engine"
 	"market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
-	"market_maker/internal/trading/grid"
 	"market_maker/pkg/concurrency"
-	"market_maker/pkg/pbu"
+	"market_maker/pkg/retry"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/shopspring/decimal"
 )
 
 // GridEngine is a lean orchestrator for grid trading
 type GridEngine struct {
-	exchanges map[string]core.IExchange
-	executor  core.IOrderExecutor
-	monitor   core.IRiskMonitor
-	store     simple.Store
-	logger    core.ILogger
-
-	// Building Blocks
-	strategy    *grid.Strategy
+	coordinator *GridCoordinator
+	exchange    core.IExchange
+	executor    core.IOrderExecutor
+	execPool    *concurrency.WorkerPool
 	slotManager core.IPositionManager
-
-	// State
-	anchorPrice decimal.Decimal
-	mu          sync.Mutex
-
-	// Concurrency
-	execPool *concurrency.WorkerPool
+	logger      core.ILogger
 }
 
 func NewGridEngine(
@@ -45,44 +33,27 @@ func NewGridEngine(
 	slotMgr core.IPositionManager,
 	cfg Config,
 ) engine.Engine {
-	strategyCfg := grid.StrategyConfig{
-		Symbol:              cfg.Symbol,
-		PriceInterval:       cfg.PriceInterval,
-		OrderQuantity:       cfg.OrderQuantity,
-		MinOrderValue:       cfg.MinOrderValue,
-		BuyWindowSize:       cfg.BuyWindowSize,
-		SellWindowSize:      cfg.SellWindowSize,
-		PriceDecimals:       cfg.PriceDecimals,
-		QtyDecimals:         cfg.QtyDecimals,
-		IsNeutral:           cfg.IsNeutral,
-		VolatilityScale:     cfg.VolatilityScale,
-		InventorySkewFactor: cfg.InventorySkewFactor,
+	var exch core.IExchange
+	for _, e := range exchanges {
+		exch = e
+		break
 	}
 
-	return &GridEngine{
-		exchanges:   exchanges,
+	e := &GridEngine{
+		exchange:    exch,
 		executor:    executor,
-		monitor:     monitor,
-		store:       store,
-		logger:      logger.WithField("component", "grid_engine"),
-		strategy:    grid.NewStrategy(strategyCfg),
-		slotManager: slotMgr,
 		execPool:    execPool,
+		slotManager: slotMgr,
+		logger:      logger.WithField("component", "grid_engine"),
 	}
+
+	e.coordinator = NewGridCoordinator(cfg, slotMgr, monitor, store, e.logger, e)
+	return e
 }
 
 func (e *GridEngine) Start(ctx context.Context) error {
 	e.logger.Info("Starting Grid Engine")
-
-	// Restore State
-	state, err := e.store.LoadState(ctx)
-	if err == nil && state != nil {
-		_ = e.slotManager.RestoreState(state.Slots)
-		e.anchorPrice = pbu.ToGoDecimal(state.LastPrice)
-		e.logger.Info("State restored", "slots", len(state.Slots), "anchor", e.anchorPrice)
-	}
-
-	return nil
+	return e.coordinator.Start(ctx, e.exchange)
 }
 
 func (e *GridEngine) Stop() error {
@@ -90,58 +61,26 @@ func (e *GridEngine) Stop() error {
 }
 
 func (e *GridEngine) OnPriceUpdate(ctx context.Context, price *pb.PriceChange) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	pVal := pbu.ToGoDecimal(price.Price)
-
-	if e.anchorPrice.IsZero() {
-		e.anchorPrice = pVal
-	}
-
-	// 1. Get ATR and Risk Status
-	atr := decimal.Zero
-	volFactor := 0.0
-	isTriggeredNow := false
-	if e.monitor != nil {
-		atr = e.monitor.GetATR(price.Symbol)
-		volFactor = e.monitor.GetVolatilityFactor(price.Symbol)
-		isTriggeredNow = e.monitor.IsTriggered()
-	}
-
-	// 3. Calculate Actions
-	slots := e.getSlots()
-	actions := e.strategy.CalculateActions(pVal, e.anchorPrice, atr, volFactor, isTriggeredNow, slots)
-
-	// 4. Execute Actions
-	e.execute(ctx, actions)
-
-	// 5. Save State
-	e.saveState(ctx, pVal)
-
-	return nil
+	return e.coordinator.OnPriceUpdate(ctx, price)
 }
 
-func (e *GridEngine) getSlots() []grid.Slot {
-	mgrSlots := e.slotManager.GetSlots()
-	slots := make([]grid.Slot, 0, len(mgrSlots))
-	for _, s := range mgrSlots {
-		slots = append(slots, grid.Slot{
-			Price:          pbu.ToGoDecimal(s.Price),
-			PositionStatus: s.PositionStatus,
-			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
-			SlotStatus:     s.SlotStatus,
-			OrderSide:      s.OrderSide,
-			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
-			OrderId:        s.OrderId,
-		})
-	}
-	return slots
-}
-
-func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
+func (e *GridEngine) Execute(ctx context.Context, actions []*pb.OrderAction) {
 	if len(actions) == 0 {
 		return
+	}
+
+	policy := retry.RetryPolicy{
+		MaxAttempts:    5,
+		InitialBackoff: 200 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+	}
+
+	isTransient := func(err error) bool {
+		if err == nil {
+			return false
+		}
+		msg := strings.ToLower(err.Error())
+		return strings.Contains(msg, "rate limit") || strings.Contains(msg, "429") || strings.Contains(msg, "timeout")
 	}
 
 	results := make([]core.OrderActionResult, len(actions))
@@ -157,16 +96,19 @@ func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
 			var order *pb.Order
 			var err error
 
-			if act.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-				order, err = e.executor.PlaceOrder(ctx, act.Request)
-			} else {
-				err = e.executor.BatchCancelOrders(ctx, act.Symbol, []int64{act.OrderId}, false)
-			}
+			retryErr := retry.Do(ctx, policy, isTransient, func() error {
+				if act.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+					order, err = e.executor.PlaceOrder(ctx, act.Request)
+				} else {
+					err = e.executor.BatchCancelOrders(ctx, act.Symbol, []int64{act.OrderId}, false)
+				}
+				return err
+			})
 
 			results[idx] = core.OrderActionResult{
 				Action: act,
 				Order:  order,
-				Error:  err,
+				Error:  retryErr,
 			}
 		}
 
@@ -177,20 +119,8 @@ func (e *GridEngine) execute(ctx context.Context, actions []*pb.OrderAction) {
 		}
 	}
 
-	// In SimpleEngine we should wait for results to apply them atomically
-	// This is slightly blocking but ensures state consistency in procedural loop
 	wg.Wait()
 	_ = e.slotManager.ApplyActionResults(results)
-}
-
-func (e *GridEngine) saveState(ctx context.Context, lastPrice decimal.Decimal) {
-	snap := e.slotManager.GetSnapshot()
-	state := &pb.State{
-		Slots:          snap.Slots,
-		LastPrice:      pbu.FromGoDecimal(lastPrice),
-		LastUpdateTime: time.Now().UnixNano(),
-	}
-	_ = e.store.SaveState(ctx, state)
 }
 
 func (e *GridEngine) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {

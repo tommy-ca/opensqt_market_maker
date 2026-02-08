@@ -104,6 +104,9 @@ func (m *mockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 func (m *mockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
+func (m *mockPositionManager) SyncOrders(orders []*pb.Order) {
+	m.Called(orders)
+}
 
 type MockExchange struct {
 	mock.Mock

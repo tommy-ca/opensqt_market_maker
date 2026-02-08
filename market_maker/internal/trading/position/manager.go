@@ -1079,3 +1079,49 @@ func (spm *SuperPositionManager) GetRealizedPnL() decimal.Decimal {
 	defer spm.historyMu.RUnlock()
 	return spm.realizedPnL
 }
+
+// SyncOrders updates the internal mappings for open orders
+func (spm *SuperPositionManager) SyncOrders(orders []*pb.Order) {
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
+
+	spm.logger.Info("Syncing orders with exchange", "count", len(orders))
+
+	// 1. Identify which slots SHOULD be locked
+	activePrices := make(map[string]*pb.Order)
+	for _, o := range orders {
+		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
+	}
+
+	// 2. Reset mappings
+	spm.orderMap = make(map[int64]*core.InventorySlot)
+	spm.clientOMap = make(map[string]*core.InventorySlot)
+
+	// 3. Reconcile all slots
+	for priceKey, slot := range spm.slots {
+		slot.Mu.Lock()
+		if order, ok := activePrices[priceKey]; ok {
+			spm.orderMap[order.OrderId] = slot
+			if order.ClientOrderId != "" {
+				spm.clientOMap[order.ClientOrderId] = slot
+			}
+
+			slot.OrderId = order.OrderId
+			slot.ClientOid = order.ClientOrderId
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderStatus = order.Status
+			slot.OrderPrice = order.Price
+			slot.OrderSide = order.Side
+		} else {
+			// Zombie check
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
+				spm.logger.Warn("Clearing zombie slot during sync", "price", priceKey, "old_order_id", slot.OrderId)
+				slot.OrderId = 0
+				slot.ClientOid = ""
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
+			}
+		}
+		slot.Mu.Unlock()
+	}
+}

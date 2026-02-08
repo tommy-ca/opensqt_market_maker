@@ -106,6 +106,7 @@ type IPositionManager interface {
 	CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error)
 	ApplyActionResults(results []OrderActionResult) error
 	OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error
+	SyncOrders(orders []*pb.Order)
 	CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	CancelAllSellOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	GetSlots() map[string]*InventorySlot

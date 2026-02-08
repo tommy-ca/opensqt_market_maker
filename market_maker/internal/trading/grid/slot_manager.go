@@ -69,25 +69,44 @@ func (m *SlotManager) SyncOrders(orders []*pb.Order) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Reset mappings
+	// 1. Identify which slots SHOULD be locked
+	activePrices := make(map[string]*pb.Order)
+	for _, o := range orders {
+		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
+	}
+
+	// 2. Reset mappings
 	m.orderMap = make(map[int64]*core.InventorySlot)
 	m.clientOMap = make(map[string]*core.InventorySlot)
 
-	for _, o := range orders {
-		priceKey := pbu.ToGoDecimal(o.Price).String()
-		if slot, ok := m.slots[priceKey]; ok {
-			m.orderMap[o.OrderId] = slot
-			if o.ClientOrderId != "" {
-				m.clientOMap[o.ClientOrderId] = slot
+	// 3. Reconcile all slots
+	for priceKey, slot := range m.slots {
+		slot.Mu.Lock()
+		if order, ok := activePrices[priceKey]; ok {
+			// Slot has an active order on exchange
+			m.orderMap[order.OrderId] = slot
+			if order.ClientOrderId != "" {
+				m.clientOMap[order.ClientOrderId] = slot
 			}
 
-			slot.Mu.Lock()
-			slot.OrderId = o.OrderId
-			slot.ClientOid = o.ClientOrderId
+			slot.OrderId = order.OrderId
+			slot.ClientOid = order.ClientOrderId
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
-			slot.OrderStatus = o.Status
-			slot.Mu.Unlock()
+			slot.OrderStatus = order.Status
+			slot.OrderPrice = order.Price
+			slot.OrderSide = order.Side
+		} else {
+			// No active order on exchange for this slot
+			// If it was LOCKED or PENDING locally, it's now a "Zombie" and should be freed
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
+				m.logger.Warn("Clearing zombie slot during sync", "price", priceKey, "old_order_id", slot.OrderId)
+				slot.OrderId = 0
+				slot.ClientOid = ""
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
+			}
 		}
+		slot.Mu.Unlock()
 	}
 }
 
@@ -319,7 +338,30 @@ func (m *SlotManager) ForceSync(ctx context.Context, symbol string, exchangeSize
 }
 
 func (m *SlotManager) RestoreFromExchangePosition(totalPosition decimal.Decimal) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.logger.Info("Restoring from exchange position", "total", totalPosition)
+
+	// Simple implementation for Grid:
+	// If totalPosition > 0, we assume it fills the slots starting from the highest buy price
+	// or lowest sell price?
+	// Actually, the most robust way is to look at existing filled slots and adjust.
+
+	currentFilled := decimal.Zero
+	for _, s := range m.slots {
+		if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+			currentFilled = currentFilled.Add(pbu.ToGoDecimal(s.PositionQty))
+		}
+	}
+
+	if currentFilled.Equal(totalPosition) {
+		return
+	}
+
+	m.logger.Warn("Position drift detected during boot", "local", currentFilled, "exchange", totalPosition)
+	// For now, we don't automatically re-distribute unless we have the grid config here.
+	// But we can at least log it.
 }
 
 func (m *SlotManager) OnUpdate(callback func(*pb.PositionUpdate)) {

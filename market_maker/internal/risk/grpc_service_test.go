@@ -161,6 +161,7 @@ func (m *MockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
+func (m *MockPositionManager) SyncOrders(orders []*pb.Order) {}
 
 func TestRiskServiceServer_GetCircuitBreakerStatus(t *testing.T) {
 	cb := NewCircuitBreaker(CircuitConfig{

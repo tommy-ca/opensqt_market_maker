@@ -228,3 +228,32 @@ func (m *MockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
+
+func (m *MockPositionManager) SyncOrders(orders []*pb.Order) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	activePrices := make(map[string]*pb.Order)
+	for _, o := range orders {
+		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
+	}
+
+	for priceKey, slot := range m.slots {
+		slot.Mu.Lock()
+		if order, ok := activePrices[priceKey]; ok {
+			slot.OrderId = order.OrderId
+			slot.ClientOid = order.ClientOrderId
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderStatus = order.Status
+			slot.OrderPrice = order.Price
+			slot.OrderSide = order.Side
+		} else {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
+				slot.OrderId = 0
+				slot.ClientOid = ""
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+			}
+		}
+		slot.Mu.Unlock()
+	}
+}
