@@ -176,7 +176,7 @@ func TestRiskServiceServer_GetCircuitBreakerStatus(t *testing.T) {
 	assert.False(t, resp.Status.IsOpen)
 
 	// Trip it
-	cb.Open("BTCUSDT", "test")
+	_ = cb.Open("BTCUSDT", "test")
 	resp, err = server.GetCircuitBreakerStatus(context.Background(), &pb.GetCircuitBreakerStatusRequest{Symbol: "BTCUSDT"})
 	assert.NoError(t, err)
 	assert.True(t, resp.Status.IsOpen)

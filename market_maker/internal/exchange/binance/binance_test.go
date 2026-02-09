@@ -29,7 +29,7 @@ func TestStartPriceStream(t *testing.T) {
 		// Send a mock bookTicker update
 		// {"e":"bookTicker","u":123,"s":"BTCUSDT","b":"45000.00","B":"10","a":"45001.00","A":"10","T":123456789,"E":123456789}
 		msg := `{"e":"bookTicker","s":"BTCUSDT","b":"45000.00","B":"10","a":"45001.00","A":"10","T":123456789,"E":123456789}`
-		c.WriteMessage(websocket.TextMessage, []byte(msg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 
 		// Keep connection open
 		time.Sleep(1 * time.Second)
@@ -86,7 +86,7 @@ func TestStartOrderStream(t *testing.T) {
 		if r.Method == "POST" && r.URL.Path == "/fapi/v1/listenKey" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"listenKey": "test_listen_key"}`))
+			_, _ = w.Write([]byte(`{"listenKey": "test_listen_key"}`))
 			return
 		}
 
@@ -138,7 +138,7 @@ func TestStartOrderStream(t *testing.T) {
 					"ss": 0
 				}
 			}`
-			c.WriteMessage(websocket.TextMessage, []byte(msg))
+			_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 			time.Sleep(1 * time.Second)
 			return
 		}
@@ -191,7 +191,7 @@ func TestPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "NEW", "price": "45000.50", "origQty": "1.5", "updateTime": 123456789}`))
+		_, _ = w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "NEW", "price": "45000.50", "origQty": "1.5", "updateTime": 123456789}`))
 	}))
 	defer server.Close()
 
@@ -240,7 +240,7 @@ func TestCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "CANCELED"}`))
+		_, _ = w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "CANCELED"}`))
 	}))
 	defer server.Close()
 
@@ -262,7 +262,7 @@ func TestGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"totalWalletBalance": "10000.50",
 			"totalMarginBalance": "10000.50",
 			"availableBalance": "5000.00",
@@ -329,7 +329,7 @@ func TestGetSymbolInfo(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// Minimal valid response
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"symbols": [
 				{
 					"symbol": "BTCUSDT",
@@ -395,7 +395,7 @@ func TestBatchPlaceOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{"orderId": 1001, "symbol": "BTCUSDT", "status": "NEW", "price": "45000", "origQty": "1", "executedQty": "0"},
 			{"orderId": 1002, "symbol": "BTCUSDT", "status": "NEW", "price": "45100", "origQty": "1", "executedQty": "0"}
 		]`))
@@ -442,7 +442,7 @@ func TestBatchCancelOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[{"orderId": 1001, "status": "CANCELED"}, {"orderId": 1002, "status": "CANCELED"}]`))
+		_, _ = w.Write([]byte(`[{"orderId": 1001, "status": "CANCELED"}, {"orderId": 1002, "status": "CANCELED"}]`))
 	}))
 	defer server.Close()
 

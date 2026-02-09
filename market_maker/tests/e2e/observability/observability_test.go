@@ -50,7 +50,7 @@ func TestE2E_ObservabilityFlow(t *testing.T) {
 
 	// New SlotManager
 	pm := grid.NewSlotManager(symbol, 2, logger)
-	pm.Initialize(decimal.NewFromInt(50000))
+	_ = pm.Initialize(decimal.NewFromInt(50000))
 
 	rm := risk.NewRiskMonitor(exch, logger, []string{symbol}, "1m", 2.0, 5, 1, "Any", riskPool)
 	cb := risk.NewCircuitBreaker(risk.CircuitConfig{})
@@ -82,7 +82,9 @@ func TestE2E_ObservabilityFlow(t *testing.T) {
 	pb.RegisterRiskServiceServer(grpcServer, riskSvc)
 	pb.RegisterPositionServiceServer(grpcServer, posSvc)
 
-	go grpcServer.Serve(lis)
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
 	defer grpcServer.GracefulStop()
 
 	// 3. Setup gRPC Client
@@ -106,7 +108,7 @@ func TestE2E_ObservabilityFlow(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Inject a price change to trigger strategy -> order placement
-	eng.OnPriceUpdate(ctx, &pb.PriceChange{
+	_ = eng.OnPriceUpdate(ctx, &pb.PriceChange{
 		Symbol: symbol,
 		Price:  pbu.FromGoDecimal(decimal.NewFromInt(50005)),
 	})
@@ -121,7 +123,7 @@ func TestE2E_ObservabilityFlow(t *testing.T) {
 	}
 
 	// Manually trigger the OnOrderUpdate in engine because backtest doesn't auto-wire callbacks in this raw setup
-	exch.StartOrderStream(ctx, func(upd *pb.OrderUpdate) {
+	_ = exch.StartOrderStream(ctx, func(upd *pb.OrderUpdate) {
 		// t.Logf("Forwarding order update: %v %v", upd.OrderId, upd.Status)
 		if err := eng.OnOrderUpdate(ctx, upd); err != nil {
 			t.Logf("Engine OnOrderUpdate failed: %v", err)

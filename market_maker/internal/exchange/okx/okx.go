@@ -1103,7 +1103,7 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 				},
 			},
 		}
-		client.Send(loginMsg)
+		_ = client.Send(loginMsg)
 
 		// Subscribe orders
 		go func() {
@@ -1117,7 +1117,7 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 					},
 				},
 			}
-			client.Send(subMsg)
+			_ = client.Send(subMsg)
 		}()
 	})
 
@@ -1193,7 +1193,7 @@ func (e *OKXExchange) StartPriceStream(ctx context.Context, symbols []string, ca
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {
@@ -1455,7 +1455,7 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 				},
 			},
 		}
-		client.Send(loginMsg)
+		_ = client.Send(loginMsg)
 
 		// Subscribe
 		go func() {
@@ -1466,7 +1466,7 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 					{"channel": "account"},
 				},
 			}
-			client.Send(subMsg)
+			_ = client.Send(subMsg)
 		}()
 	})
 

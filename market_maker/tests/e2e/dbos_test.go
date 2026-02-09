@@ -71,7 +71,7 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 		5, 5, 2, 3, gridStrategy, nil, nil, logger, nil,
 	)
 
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	// We use the workflows directly to simulate DBOS execution
 	w := durable.NewTradingWorkflows(pm, orderExecutor)

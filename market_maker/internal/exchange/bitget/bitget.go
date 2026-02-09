@@ -906,7 +906,7 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 				},
 			},
 		}
-		client.Send(loginMsg)
+		_ = client.Send(loginMsg)
 
 		go func() {
 			time.Sleep(100 * time.Millisecond)
@@ -920,7 +920,7 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 					},
 				},
 			}
-			client.Send(subMsg)
+			_ = client.Send(subMsg)
 		}()
 	})
 
@@ -1020,7 +1020,7 @@ func (e *BitgetExchange) StartPriceStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {
@@ -1099,7 +1099,7 @@ func (e *BitgetExchange) StartKlineStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {

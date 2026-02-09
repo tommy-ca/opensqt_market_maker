@@ -637,7 +637,7 @@ func (e *BinanceSpotExchange) GetPositions(ctx context.Context, symbol string) (
 	// Hacky: Try to guess asset from symbol if not available from Info
 	// Better: Use FetchExchangeInfo to get BaseAsset
 	info, err := e.GetSymbolInfo(ctx, symbol)
-	targetAsset := symbol
+	var targetAsset string
 	if err == nil {
 		targetAsset = info.BaseAsset
 	} else {
@@ -759,7 +759,7 @@ func (e *BinanceSpotExchange) StartOrderStream(ctx context.Context, callback fun
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(&update) })
+			_ = e.pool.Submit(func() { callback(&update) })
 		} else {
 			callback(&update)
 		}
@@ -811,7 +811,7 @@ func (e *BinanceSpotExchange) StartPriceStream(ctx context.Context, symbols []st
 			}
 
 			if e.pool != nil {
-				e.pool.Submit(func() { callback(&change) })
+				_ = e.pool.Submit(func() { callback(&change) })
 			} else {
 				callback(&change)
 			}

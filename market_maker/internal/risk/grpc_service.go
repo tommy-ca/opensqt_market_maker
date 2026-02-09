@@ -2,7 +2,6 @@ package risk
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"market_maker/internal/pb"
@@ -18,7 +17,6 @@ type RiskServiceServer struct {
 	monitor        *RiskMonitor
 	reconciler     *Reconciler
 	circuitBreaker *CircuitBreaker
-	mu             sync.RWMutex
 }
 
 func NewRiskServiceServer(monitor *RiskMonitor, reconciler *Reconciler, cb *CircuitBreaker) *RiskServiceServer {

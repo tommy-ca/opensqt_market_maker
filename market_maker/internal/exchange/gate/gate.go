@@ -167,7 +167,7 @@ func (e *GateExchange) placeOrderInternal(ctx context.Context, req *pb.PlaceOrde
 	e.mu.RUnlock()
 	if !ok {
 		// Try to fetch if not found
-		e.FetchExchangeInfo(ctx, req.Symbol)
+		_ = e.FetchExchangeInfo(ctx, req.Symbol)
 		e.mu.RLock()
 		multiplier = e.quantoMultiplier[contract]
 		e.mu.RUnlock()
@@ -795,7 +795,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 				"SIGN":   signature,
 			},
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {
@@ -875,7 +875,7 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 			"event":   "subscribe",
 			"payload": gateSymbols,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {
@@ -962,7 +962,7 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			"event":   "subscribe",
 			"payload": payload,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {

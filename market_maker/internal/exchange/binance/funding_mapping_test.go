@@ -34,7 +34,7 @@ func TestBinanceExchange_GetFundingRate_Mapping(t *testing.T) {
 				"nextFundingTime": int64(1738108800000), // ms
 				"time":            int64(1738080000000), // ms
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}
 	}))
 	defer ts.Close()
@@ -72,7 +72,7 @@ func TestBinanceExchange_GetFundingRates_Mapping(t *testing.T) {
 					"time":            int64(1738080000000),
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}
 	}))
 	defer ts.Close()

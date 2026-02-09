@@ -36,7 +36,6 @@ type RiskMonitor struct {
 	// Lifecycle
 	ctx       context.Context
 	cancel    context.CancelFunc
-	wg        sync.WaitGroup
 	mu        sync.RWMutex
 	reportInt time.Duration
 	pool      *concurrency.WorkerPool
@@ -355,7 +354,7 @@ func (rm *RiskMonitor) handleKlineUpdate(candle *pb.Candle) {
 
 	// Update global trigger state
 	if rm.pool != nil {
-		rm.pool.Submit(rm.updateGlobalTriggerState)
+		_ = rm.pool.Submit(rm.updateGlobalTriggerState)
 	} else {
 		go rm.updateGlobalTriggerState()
 	}

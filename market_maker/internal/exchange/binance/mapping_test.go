@@ -37,7 +37,7 @@ func TestBinanceMapping_AccountAndPositions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rawResponse))
+		_, _ = w.Write([]byte(rawResponse))
 	}))
 	defer server.Close()
 
@@ -86,7 +86,7 @@ func TestBinanceMapping_OrderUpdates(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rawOrder))
+		_, _ = w.Write([]byte(rawOrder))
 	}))
 	defer server.Close()
 

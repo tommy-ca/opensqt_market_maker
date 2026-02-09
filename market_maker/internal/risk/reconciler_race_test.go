@@ -64,6 +64,6 @@ func TestReconciliationRaceCondition(t *testing.T) {
 	}()
 
 	for i := 0; i < 100; i++ {
-		reconciler.Reconcile(ctx)
+		_ = reconciler.Reconcile(ctx)
 	}
 }

@@ -32,7 +32,7 @@ func TestBacktest_BasicFlow(t *testing.T) {
 	)
 
 	// Initial grid setup
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
 	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
@@ -49,8 +49,8 @@ func TestBacktest_BasicFlow(t *testing.T) {
 
 	// 3. Run backtest
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	err := runner.Run(ctx, "BTCUSDT", prices)
@@ -104,7 +104,7 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 	)
 
 	// Initial grid setup at 45000
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
 	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
@@ -123,8 +123,8 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 
 	// 3. Run backtest
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	err := runner.Run(ctx, "BTCUSDT", prices)

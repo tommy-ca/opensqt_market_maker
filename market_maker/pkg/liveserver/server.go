@@ -300,11 +300,11 @@ func (s *Server) writePump(conn *websocket.Conn, client *Client) {
 	for {
 		select {
 		case msg, ok := <-client.GetSendChan():
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 			if !ok {
 				// Channel closed
-				conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -318,7 +318,7 @@ func (s *Server) writePump(conn *websocket.Conn, client *Client) {
 
 		case <-ticker.C:
 			// Send ping to keep connection alive
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -332,9 +332,9 @@ func (s *Server) readPump(conn *websocket.Conn, client *Client) {
 		s.hub.Unregister(client)
 	}()
 
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -363,7 +363,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"time":    time.Now().Unix(),
 	}
 
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // BroadcastMessage is a convenience method to broadcast messages

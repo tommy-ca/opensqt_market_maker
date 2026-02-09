@@ -40,7 +40,6 @@ type OrderExecutor struct {
 	// Lifecycle control
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
 
 	mu sync.RWMutex
 

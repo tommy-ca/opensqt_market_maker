@@ -17,7 +17,7 @@ func GenerateDeterministicOrderID(strategyID string, price decimal.Decimal, side
 	priceInt := price.Mul(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals)))).Round(0).IntPart()
 
 	sideCode := "B"
-	if side == "SELL" {
+	if strings.Contains(strings.ToUpper(side), "SELL") {
 		sideCode = "S"
 	}
 

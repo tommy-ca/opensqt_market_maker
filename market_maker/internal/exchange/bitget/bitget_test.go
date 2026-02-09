@@ -47,12 +47,12 @@ func TestBitgetStartPriceStream(t *testing.T) {
 					"high24h": "46000.00",
 					"low24h": "43000.00",
 					"bestBid": "45000.00",
-					"bestAsk": "45001.00",
-					"ts": 1610000000000
-				}
-			]
-		}`
-		c.WriteMessage(websocket.TextMessage, []byte(msg))
+				"bestAsk": "45001.00",
+				"ts": 1610000000000
+			}
+		]
+	}`
+		_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -143,7 +143,7 @@ func TestBitgetStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -190,7 +190,7 @@ func TestBitgetPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": {
@@ -235,7 +235,7 @@ func TestBitgetGetAccount(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		if strings.Contains(r.URL.Path, "/api/v2/mix/account/account") {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
 				"data": {
@@ -247,7 +247,7 @@ func TestBitgetGetAccount(t *testing.T) {
 				}
 			}`))
 		} else if strings.Contains(r.URL.Path, "/api/v2/mix/position/single-position") {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
 				"data": []
@@ -285,7 +285,7 @@ func TestBitgetCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": {
@@ -344,7 +344,7 @@ func TestBitgetGetSymbolInfo(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": [

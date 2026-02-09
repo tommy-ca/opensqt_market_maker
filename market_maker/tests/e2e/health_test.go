@@ -90,7 +90,7 @@ func TestE2E_HealthServer(t *testing.T) {
 	healthServer := server.NewHealthServer("9999", logger, healthManager)
 	healthServer.UpdateStatus("test_key", "test_value")
 	healthServer.Start()
-	defer healthServer.Stop(context.Background())
+	defer func() { _ = healthServer.Stop(context.Background()) }()
 
 	// Give server time to start
 	time.Sleep(100 * time.Millisecond)

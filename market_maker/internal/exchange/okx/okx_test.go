@@ -44,17 +44,12 @@ func TestOKXStartPriceStream(t *testing.T) {
 			"data": [
 				{
 					"instId": "BTC-USDT-SWAP",
-					"last": "45000",
-					"lastSz": "0.1",
-					"askPx": "45001",
-					"askSz": "1.0",
-					"bidPx": "45000",
-					"bidSz": "1.0",
+					"last": "45000.00",
 					"ts": "1610000000000"
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -154,7 +149,7 @@ func TestOKXStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -198,7 +193,7 @@ func TestOKXPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"msg": "",
 			"data": [
@@ -250,7 +245,7 @@ func TestOKXCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"data": [
 				{
@@ -280,7 +275,7 @@ func TestOKXGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"data": [
 				{
@@ -361,7 +356,7 @@ func TestOKXGetSymbolInfo(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"data": [
 				{
@@ -411,7 +406,7 @@ func TestOKXBatchPlaceOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"msg": "",
 			"data": [
@@ -451,7 +446,7 @@ func TestOKXBatchCancelOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"data": [
 				{"ordId": "2001", "sCode": "0"},

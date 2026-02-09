@@ -76,19 +76,19 @@ func TestBacktest_DynamicInterval_E2E(t *testing.T) {
 	runner := NewBacktestRunner(engine, exch)
 
 	// Initialize
-	pm.Initialize(decimal.NewFromInt(50000))
+	_ = pm.Initialize(decimal.NewFromInt(50000))
 
 	// Wire up updates
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	// 2. Phase 1: Low Volatility (ATR = 5.0) -> Effective Interval 10.0 (Base)
 	rm.On("GetATR", "BTCUSDT").Return(decimal.NewFromFloat(5.0))
 
 	// Run price stable to generate orders
-	runner.Run(ctx, "BTCUSDT", []decimal.Decimal{decimal.NewFromInt(50000)})
+	_ = runner.Run(ctx, "BTCUSDT", []decimal.Decimal{decimal.NewFromInt(50000)})
 	time.Sleep(100 * time.Millisecond)
 
 	// Check orders. Should be at 49990, 49980...
@@ -109,7 +109,7 @@ func TestBacktest_DynamicInterval_E2E(t *testing.T) {
 	rm.ExpectedCalls = nil // Clear expectations
 	rm.On("GetATR", "BTCUSDT").Return(decimal.NewFromFloat(50.0))
 
-	runner.Run(ctx, "BTCUSDT", []decimal.Decimal{decimal.NewFromInt(50001)})
+	_ = runner.Run(ctx, "BTCUSDT", []decimal.Decimal{decimal.NewFromInt(50001)})
 	time.Sleep(100 * time.Millisecond)
 
 	// Check new orders. Should be at 50000 - 50 = 49950?
@@ -183,11 +183,11 @@ func TestBacktest_TrendFollowing_E2E(t *testing.T) {
 	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
 	// runner := NewBacktestRunner(engine, exch) // Not used
 
-	pm.Initialize(decimal.NewFromInt(50000))
+	_ = pm.Initialize(decimal.NewFromInt(50000))
 
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	// 2. Build Inventory Manually (Step-by-Step to ensure fills process)
@@ -209,7 +209,7 @@ func TestBacktest_TrendFollowing_E2E(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Notify engine to recalculate (triggers strategy)
-		engine.OnPriceUpdate(ctx, &pb.PriceChange{
+		_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{
 			Symbol: "BTCUSDT",
 			Price:  pbu.FromGoDecimal(p),
 		})

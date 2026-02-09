@@ -52,7 +52,7 @@ func TestBybitStartPriceStream(t *testing.T) {
 				"turnover24h": "45000000"
 			}
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -141,7 +141,7 @@ func TestBybitStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -184,7 +184,7 @@ func TestBybitPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"retCode": 0,
 			"retMsg": "OK",
 			"result": {
@@ -230,7 +230,7 @@ func TestBybitCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"retCode": 0,
 			"retMsg": "OK",
 			"result": {
@@ -258,7 +258,7 @@ func TestBybitGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"retCode": 0,
 			"result": {
 				"list": [
@@ -330,7 +330,7 @@ func TestBybitGetSymbolInfo(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"retCode": 0,
 			"result": {
 				"list": [

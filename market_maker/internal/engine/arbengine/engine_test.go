@@ -45,7 +45,7 @@ func TestArbitrageEngine_Entry(t *testing.T) {
 	cfg.Trading.MinSpreadAPR = 0.10
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, logger, cfg.Trading.Symbol)
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, logger, arbengine.EngineConfig{
 		Symbol:                    cfg.Trading.Symbol,
@@ -57,7 +57,7 @@ func TestArbitrageEngine_Entry(t *testing.T) {
 		OrderQuantity:             decimal.NewFromFloat(cfg.Trading.OrderQuantity),
 		FundingStalenessThreshold: time.Minute,
 	})
-	eng.Start(ctx)
+	_ = eng.Start(ctx)
 
 	// Simulate High Funding Rate Update for both legs
 	// Spot: 0%
@@ -66,7 +66,7 @@ func TestArbitrageEngine_Entry(t *testing.T) {
 	perpEx.SetFundingRate("BTCUSDT", decimal.NewFromFloat(0.0005))
 
 	// Re-fetch to ensure monitor has both
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	update := &pb.FundingUpdate{
 		Exchange:  "binance",
@@ -98,7 +98,7 @@ func TestArbitrageEngine_StalenessGating(t *testing.T) {
 	ctx := context.Background()
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, logger, "BTCUSDT")
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, logger, arbengine.EngineConfig{
 		Symbol:                    "BTCUSDT",
@@ -108,12 +108,12 @@ func TestArbitrageEngine_StalenessGating(t *testing.T) {
 		OrderQuantity:             decimal.NewFromFloat(1.0),
 		FundingStalenessThreshold: 100 * time.Millisecond,
 	})
-	eng.Start(ctx)
+	_ = eng.Start(ctx)
 
 	// Set fresh rates
 	spotEx.SetFundingRate("BTCUSDT", decimal.Zero)
 	perpEx.SetFundingRate("BTCUSDT", decimal.NewFromFloat(0.001))
-	fundingMonitor.Start(ctx) // Sync
+	_ = fundingMonitor.Start(ctx) // Sync
 
 	// Wait for staleness
 	time.Sleep(200 * time.Millisecond)
@@ -135,7 +135,7 @@ func TestArbitrageEngine_NegativeFunding(t *testing.T) {
 	ctx := context.Background()
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, logger, "BTCUSDT")
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, logger, arbengine.EngineConfig{
 		Symbol:                    "BTCUSDT",
@@ -145,14 +145,14 @@ func TestArbitrageEngine_NegativeFunding(t *testing.T) {
 		OrderQuantity:             decimal.NewFromFloat(1.0),
 		FundingStalenessThreshold: time.Minute,
 	})
-	eng.Start(ctx)
+	_ = eng.Start(ctx)
 
 	// Simulate Negative Funding (Perp receives)
 	// Spot: 0%
 	// Perp: -0.05% -> -54% APR (Spread = -0.05% - 0% = -0.05%)
 	spotEx.SetFundingRate("BTCUSDT", decimal.Zero)
 	perpEx.SetFundingRate("BTCUSDT", decimal.NewFromFloat(-0.0005))
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	update := &pb.FundingUpdate{
 		Exchange:  "binance",

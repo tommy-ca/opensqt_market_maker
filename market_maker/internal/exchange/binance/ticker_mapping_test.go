@@ -28,7 +28,7 @@ func TestBinanceExchange_GetTickers_Mapping(t *testing.T) {
 					"closeTime":          int64(1738080000000),
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}
 	}))
 	defer ts.Close()

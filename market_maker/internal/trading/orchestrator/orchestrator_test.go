@@ -72,6 +72,10 @@ func (m *mockExchange) StartPriceStream(ctx context.Context, symbols []string, c
 	return nil
 }
 
+func (m *mockExchange) GetName() string {
+	return "mock"
+}
+
 type mockLogger struct {
 	core.ILogger
 }
@@ -103,7 +107,7 @@ func TestOrchestrator_Routing(t *testing.T) {
 
 	// Start managers (manual start for test to avoid stream complexity)
 	for _, m := range orch.managers {
-		m.Start()
+		_ = m.Start()
 		defer m.Stop()
 	}
 
@@ -130,7 +134,7 @@ func TestOrchestrator_OrderRouting(t *testing.T) {
 	engineBTC.On("OnOrderUpdate", mock.Anything, update).Return(nil).Once()
 
 	for _, m := range orch.managers {
-		m.Start()
+		_ = m.Start()
 		defer m.Stop()
 	}
 

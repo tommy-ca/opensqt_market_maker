@@ -61,7 +61,7 @@ func TestGateStartPriceStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -128,7 +128,7 @@ func TestGateStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -166,7 +166,7 @@ func TestGatePlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": 123456,
 			"text": "test_oid",
 			"contract": "BTC_USDT",
@@ -211,7 +211,7 @@ func TestGateGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"total": "10000",
 			"available": "5000",
 			"point": "0",
@@ -242,7 +242,7 @@ func TestGateCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": 12345,
 			"status": "finished",
 			"finish_as": "cancelled"
@@ -302,7 +302,7 @@ func TestGateGetSymbolInfo(t *testing.T) {
 		assert.Equal(t, "/api/v4/futures/usdt/contracts", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{
 				"name": "BTC_USDT",
 				"order_price_round": "0.1",

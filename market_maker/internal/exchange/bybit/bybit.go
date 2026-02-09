@@ -995,7 +995,7 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		client.Send(authMsg)
+		_ = client.Send(authMsg)
 
 		// Subscribe
 		go func() {
@@ -1007,7 +1007,7 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 					"position",
 				},
 			}
-			client.Send(subMsg)
+			_ = client.Send(subMsg)
 		}()
 	})
 
@@ -1074,7 +1074,7 @@ func (e *BybitExchange) StartPriceStream(ctx context.Context, symbols []string, 
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		_ = client.Send(sub)
 	})
 
 	go func() {
@@ -1331,7 +1331,7 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		client.Send(authMsg)
+		_ = client.Send(authMsg)
 
 		// Subscribe
 		go func() {
@@ -1340,7 +1340,7 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 				"op":   "subscribe",
 				"args": []string{"wallet"},
 			}
-			client.Send(subMsg)
+			_ = client.Send(subMsg)
 		}()
 	})
 

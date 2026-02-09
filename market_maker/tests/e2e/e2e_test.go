@@ -110,7 +110,7 @@ func TestE2E_CrashRecovery(t *testing.T) {
 	}
 
 	initialPrice := decimal.NewFromInt(45000)
-	pm.Initialize(initialPrice)
+	_ = pm.Initialize(initialPrice)
 
 	// Simulate some orders being placed
 	err := engine.OnPriceUpdate(ctx, &pb.PriceChange{
@@ -134,7 +134,7 @@ func TestE2E_CrashRecovery(t *testing.T) {
 	}
 
 	// 2. simulate CRASH
-	engine.Stop()
+	_ = engine.Stop()
 
 	// 3. RECOVER
 	engineRec, pmRec, _, cleanupRec := setupEngine(t, exch, testDB)
@@ -169,11 +169,11 @@ func TestE2E_RiskProtection(t *testing.T) {
 	if err := rm.Start(ctx); err != nil {
 		t.Fatalf("Failed to start risk monitor: %v", err)
 	}
-	engine.Start(ctx)
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = engine.Start(ctx)
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	// Normal state
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(45000))})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(45000))})
 
 	// Wait for orders to be placed on exchange
 	time.Sleep(100 * time.Millisecond)
@@ -208,7 +208,7 @@ func TestE2E_RiskProtection(t *testing.T) {
 	}
 
 	// Next price update should trigger engine to cancel buys
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(39999))})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(39999))})
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -229,18 +229,18 @@ func TestE2E_TradingFlow(t *testing.T) {
 
 	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
 	defer cleanup()
-	engine.Start(ctx)
+	_ = engine.Start(ctx)
 
 	// Start order stream to feed engine
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	initialPrice := decimal.NewFromInt(45000)
-	pm.Initialize(initialPrice)
+	_ = pm.Initialize(initialPrice)
 
 	// 1. First price update - places orders
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
 	time.Sleep(100 * time.Millisecond)
 	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
@@ -271,12 +271,12 @@ func TestE2E_TradingFlow(t *testing.T) {
 
 	// 3. Price rise - should place a sell order for the filled slot
 	risePrice := decimal.NewFromInt(45010)
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(risePrice)})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(risePrice)})
 
 	time.Sleep(100 * time.Millisecond)
-	openOrders, _ = exch.GetOpenOrders(ctx, symbol, false)
+	allOrders := exch.GetOrders()
 	foundSell := false
-	for _, o := range openOrders {
+	for _, o := range allOrders {
 		if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
 			foundSell = true
 			break

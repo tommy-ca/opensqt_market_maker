@@ -252,7 +252,9 @@ func (s *GridStrategy) calculateSlotAdjustment(
 		} else {
 			// Sell Order
 			maxPrice := currentPrice.Add(interval.Mul(decimal.NewFromInt(int64(s.sellWindowSize))))
-			if orderPrice.GreaterThan(maxPrice) || orderPrice.LessThan(currentPrice) {
+			// Don't cancel if orderPrice < currentPrice (profitable behind market)
+			// Only cancel if it's too far ABOVE.
+			if orderPrice.GreaterThan(maxPrice) {
 				return &pb.OrderAction{Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, OrderId: slot.OrderId, Symbol: s.symbol, Price: slot.Price}
 			}
 		}

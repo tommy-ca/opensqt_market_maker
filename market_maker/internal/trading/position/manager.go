@@ -136,21 +136,21 @@ func NewSuperPositionManager(
 	// Register observable gauges
 	commonAttrs := metric.WithAttributes(attribute.String("symbol", symbol))
 
-	meter.Int64ObservableGauge("position_total_slots",
+	_, _ = meter.Int64ObservableGauge("position_total_slots",
 		metric.WithDescription("Total number of grid slots"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
 			obs.Observe(atomic.LoadInt64(&spm.totalSlots), commonAttrs)
 			return nil
 		}))
 
-	meter.Int64ObservableGauge("position_active_slots",
+	_, _ = meter.Int64ObservableGauge("position_active_slots",
 		metric.WithDescription("Number of active grid slots (locked)"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
 			obs.Observe(atomic.LoadInt64(&spm.activeSlots), commonAttrs)
 			return nil
 		}))
 
-	meter.Int64ObservableGauge("position_margin_locked",
+	_, _ = meter.Int64ObservableGauge("position_margin_locked",
 		metric.WithDescription("Whether margin is currently locked (1 for true, 0 for false)"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
 			val := int64(0)

@@ -224,7 +224,7 @@ func (r *Reconciler) reconcileOrders(ctx context.Context, slots map[string]*core
 				Status:     pb.OrderStatus_ORDER_STATUS_CANCELED,
 				UpdateTime: time.Now().UnixMilli(),
 			}
-			r.positionManager.OnOrderUpdate(ctx, &update)
+			_ = r.positionManager.OnOrderUpdate(ctx, &update)
 		}
 	}
 

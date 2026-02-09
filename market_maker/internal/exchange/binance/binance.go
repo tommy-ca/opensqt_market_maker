@@ -20,7 +20,6 @@ import (
 	"market_maker/pkg/retry"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -62,7 +61,6 @@ func (e *BinanceExchange) SignRequest(req *http.Request, body []byte) error {
 type BinanceExchange struct {
 	*base.BaseAdapter
 	symbolInfo map[string]*pb.SymbolInfo
-	mu         sync.RWMutex
 	pool       *concurrency.WorkerPool
 }
 
@@ -411,7 +409,7 @@ func (e *BinanceExchange) StartFundingRateStream(ctx context.Context, symbol str
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(&update) })
+			_ = e.pool.Submit(func() { callback(&update) })
 		} else {
 			callback(&update)
 		}
@@ -1214,7 +1212,7 @@ func (e *BinanceExchange) StartOrderStream(ctx context.Context, callback func(up
 		var eventType string
 		if len(event.EventType) > 0 {
 			if event.EventType[0] == '"' {
-				json.Unmarshal(event.EventType, &eventType)
+				_ = json.Unmarshal(event.EventType, &eventType)
 			} else {
 				// If it's a number? Unlikely for EventType.
 				eventType = string(event.EventType)
@@ -1264,7 +1262,7 @@ func (e *BinanceExchange) StartOrderStream(ctx context.Context, callback func(up
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(update) })
+			_ = e.pool.Submit(func() { callback(update) })
 		} else {
 			callback(update)
 		}
@@ -1320,10 +1318,10 @@ func (e *BinanceExchange) StartPriceStream(ctx context.Context, symbols []string
 			if event.EventTime[0] == '"' {
 				// It's a string, strip quotes
 				var s string
-				json.Unmarshal(event.EventTime, &s)
-				fmt.Sscanf(s, "%d", &et)
+				_ = json.Unmarshal(event.EventTime, &s)
+				_, _ = fmt.Sscanf(s, "%d", &et)
 			} else {
-				json.Unmarshal(event.EventTime, &et)
+				_ = json.Unmarshal(event.EventTime, &et)
 			}
 		}
 
@@ -1334,7 +1332,7 @@ func (e *BinanceExchange) StartPriceStream(ctx context.Context, symbols []string
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(change) })
+			_ = e.pool.Submit(func() { callback(change) })
 		} else {
 			callback(change)
 		}

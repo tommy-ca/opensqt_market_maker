@@ -21,7 +21,7 @@ func TestPositionServiceServer_GetPositions(t *testing.T) {
 	rm := &mockRiskMonitor{}
 	// symbol="BTCUSDT", interval=1.0, qty=10.0, minVal=5.0, buyW=2, sellW=2, pDec=2, qDec=3
 	pm := createTestPM("BTCUSDT", 1.0, 10.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(50000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(50000.0))
 
 	// Manually fill a slot to have some position
 	slots := pm.GetSlots()
@@ -72,7 +72,7 @@ func TestPositionServiceServer_GetOpenOrders(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 10.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(50000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(50000.0))
 
 	// Lock a slot with an order
 	slots := pm.GetSlots()
@@ -99,7 +99,7 @@ func TestPositionServiceServer_SubscribePositions(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 10.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(50000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(50000.0))
 
 	server := NewPositionServiceServer(pm, "binance")
 
@@ -111,7 +111,7 @@ func TestPositionServiceServer_SubscribePositions(t *testing.T) {
 
 	// Start subscription in goroutine
 	go func() {
-		server.SubscribePositions(&pb.PositionServiceSubscribePositionsRequest{}, stream)
+		_ = server.SubscribePositions(&pb.PositionServiceSubscribePositionsRequest{}, stream)
 	}()
 
 	// Give time for subscription to register
@@ -139,7 +139,7 @@ func TestPositionServiceServer_SubscribePositions(t *testing.T) {
 	pm.UpdateOrderIndex(999, "test_oid", targetSlot)
 
 	// This should trigger notifyUpdate
-	pm.OnOrderUpdate(context.Background(), update)
+	_ = pm.OnOrderUpdate(context.Background(), update)
 
 	// Verify we got the update in the stream
 	select {

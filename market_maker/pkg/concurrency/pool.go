@@ -3,7 +3,6 @@ package concurrency
 import (
 	"fmt"
 	"market_maker/internal/core"
-	"sync"
 	"time"
 
 	"github.com/alitto/pond"
@@ -23,7 +22,6 @@ type WorkerPool struct {
 	pool   *pond.WorkerPool
 	config PoolConfig
 	logger core.ILogger
-	mu     sync.RWMutex
 }
 
 // NewWorkerPool creates a new worker pool
