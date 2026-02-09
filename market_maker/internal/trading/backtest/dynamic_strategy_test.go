@@ -3,9 +3,9 @@ package backtest
 import (
 	"context"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
@@ -59,9 +59,17 @@ func TestBacktest_DynamicInterval_E2E(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000)
 
 	// Base Interval 10.0
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest",
-		decimal.NewFromFloat(10.0), decimal.NewFromFloat(1.0), decimal.NewFromFloat(5.0),
-		5, 5, 2, 3, false, rm, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:          "BTCUSDT",
+		PriceInterval:   decimal.NewFromFloat(10.0),
+		OrderQuantity:   decimal.NewFromFloat(1.0),
+		MinOrderValue:   decimal.NewFromFloat(5.0),
+		BuyWindowSize:   5,
+		SellWindowSize:  5,
+		PriceDecimals:   2,
+		QtyDecimals:     3,
+		VolatilityScale: 1.0,
+	})
 
 	// Enable Dynamic Interval
 	strat.SetDynamicInterval(true, 1.0)
@@ -166,9 +174,16 @@ func TestBacktest_TrendFollowing_E2E(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000)
 
 	// Base Interval 10.0
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest",
-		decimal.NewFromFloat(10.0), decimal.NewFromFloat(1.0), decimal.NewFromFloat(5.0),
-		5, 5, 2, 3, false, rm, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         "BTCUSDT",
+		PriceInterval:  decimal.NewFromFloat(10.0),
+		OrderQuantity:  decimal.NewFromFloat(1.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+	})
 
 	// Enable Trend Following (Skew 0.001 -> 0.1% -> 50 USDT at 50k)
 	// This is aggressive: 1 unit of inventory shifts grid down by 50 USDT (5 intervals).

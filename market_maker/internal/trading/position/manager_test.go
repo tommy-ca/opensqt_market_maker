@@ -4,7 +4,7 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
-	"market_maker/internal/trading/strategy"
+	"market_maker/internal/trading/grid"
 	"market_maker/pkg/pbu"
 	"testing"
 	"time"
@@ -13,7 +13,17 @@ import (
 )
 
 func createTestPM(symbol string, interval, qty, minVal float64, buyW, sellW, pDec, qDec int, rm core.IRiskMonitor, logger core.ILogger) *SuperPositionManager {
-	strat := strategy.NewGridStrategy(symbol, "mock", decimal.NewFromFloat(interval), decimal.NewFromFloat(qty), decimal.NewFromFloat(minVal), buyW, sellW, pDec, qDec, false, rm, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         symbol,
+		PriceInterval:  decimal.NewFromFloat(interval),
+		OrderQuantity:  decimal.NewFromFloat(qty),
+		MinOrderValue:  decimal.NewFromFloat(minVal),
+		BuyWindowSize:  buyW,
+		SellWindowSize: sellW,
+		PriceDecimals:  pDec,
+		QtyDecimals:    qDec,
+		IsNeutral:      false,
+	})
 	return NewSuperPositionManager(symbol, "mock", interval, qty, minVal, buyW, sellW, pDec, qDec, strat, rm, nil, logger, nil)
 }
 

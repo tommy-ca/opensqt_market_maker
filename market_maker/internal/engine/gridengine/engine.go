@@ -3,8 +3,8 @@ package gridengine
 import (
 	"context"
 	"market_maker/internal/core"
-	"market_maker/internal/engine"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/retry"
 	"strings"
@@ -25,13 +25,13 @@ type GridEngine struct {
 func NewGridEngine(
 	exchanges map[string]core.IExchange,
 	executor core.IOrderExecutor,
-	monitor core.IRiskMonitor,
+	riskMonitor core.IRiskMonitor,
 	store core.IStateStore,
 	logger core.ILogger,
 	execPool *concurrency.WorkerPool,
 	slotMgr core.IPositionManager,
 	cfg Config,
-) engine.Engine {
+) *GridEngine {
 	var exch core.IExchange
 	for _, e := range exchanges {
 		exch = e
@@ -46,8 +46,13 @@ func NewGridEngine(
 		logger:      logger.WithField("component", "grid_engine"),
 	}
 
-	e.coordinator = NewGridCoordinator(cfg, slotMgr, monitor, store, e.logger, e)
+	rm := monitor.NewRegimeMonitor(exch, logger, cfg.Symbol)
+	e.coordinator = NewGridCoordinator(cfg, slotMgr, riskMonitor, rm, store, e.logger, e)
 	return e
+}
+
+func (e *GridEngine) GetCoordinator() *GridCoordinator {
+	return e.coordinator
 }
 
 func (e *GridEngine) Start(ctx context.Context) error {

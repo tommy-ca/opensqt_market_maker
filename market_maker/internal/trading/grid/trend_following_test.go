@@ -41,7 +41,7 @@ func TestGridStrategy_TrendFollowing(t *testing.T) {
 		})
 	}
 
-	actions := strat.CalculateActions(current, anchor, decimal.Zero, 0, false, levels)
+	actions := strat.CalculateActions(current, anchor, decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, levels)
 
 	// With +10 inventory and skew 0.001:
 	// Adjustment = 1 - (10 * 0.001) = 0.99

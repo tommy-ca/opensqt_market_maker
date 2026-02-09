@@ -231,6 +231,13 @@ func (x *State) GetChecksum() string {
 	return ""
 }
 
+func (x *State) GetIsRiskTriggered() bool {
+	if x != nil {
+		return x.IsRiskTriggered
+	}
+	return false
+}
+
 type PositionManagerSnapshot struct {
 	state          protoimpl.MessageState    `protogen:"open.v1"`
 	Symbol         string                    `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
@@ -648,7 +655,7 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\vslot_status\x18\n" +
 	" \x01(\x0e2#.opensqt.market_maker.v1.SlotStatusR\n" +
 	"slotStatus\x12/\n" +
-	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\"\xd7\x02\n" +
+	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\"\x83\x03\n" +
 	"\x05State\x12?\n" +
 	"\x05slots\x18\x01 \x03(\v2).opensqt.market_maker.v1.State.SlotsEntryR\x05slots\x123\n" +
 	"\n" +
@@ -656,7 +663,8 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\x10last_update_time\x18\x03 \x01(\x03R\x0elastUpdateTime\x12\x16\n" +
 	"\x06symbol\x18\x04 \x01(\tR\x06symbol\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\x03R\aversion\x12\x1a\n" +
-	"\bchecksum\x18\x06 \x01(\tR\bchecksum\x1a`\n" +
+	"\bchecksum\x18\x06 \x01(\tR\bchecksum\x12*\n" +
+	"\x11is_risk_triggered\x18\a \x01(\bR\x0fisRiskTriggered\x1a`\n" +
 	"\n" +
 	"SlotsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12<\n" +

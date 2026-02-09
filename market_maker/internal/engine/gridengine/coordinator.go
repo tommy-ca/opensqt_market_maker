@@ -6,6 +6,7 @@ import (
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/internal/trading/grid"
+	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/pbu"
 	"sync"
 	"time"
@@ -20,13 +21,14 @@ type IGridExecutor interface {
 
 // GridCoordinator handles the shared logic between Simple and Durable grid engines
 type GridCoordinator struct {
-	symbol      string
-	strategy    *grid.Strategy
-	slotManager core.IPositionManager
-	monitor     core.IRiskMonitor
-	store       core.IStateStore
-	logger      core.ILogger
-	executor    IGridExecutor
+	symbol        string
+	strategy      *grid.Strategy
+	slotManager   core.IPositionManager
+	monitor       core.IRiskMonitor
+	regimeMonitor *monitor.RegimeMonitor
+	store         core.IStateStore
+	logger        core.ILogger
+	executor      IGridExecutor
 
 	anchorPrice     decimal.Decimal
 	isRiskTriggered bool
@@ -36,12 +38,14 @@ type GridCoordinator struct {
 func NewGridCoordinator(
 	cfg Config,
 	slotMgr core.IPositionManager,
-	monitor core.IRiskMonitor,
+	riskMonitor core.IRiskMonitor,
+	regimeMonitor *monitor.RegimeMonitor,
 	store core.IStateStore,
 	logger core.ILogger,
 	executor IGridExecutor,
 ) *GridCoordinator {
 	strategyCfg := grid.StrategyConfig{
+		StrategyID:          cfg.StrategyID,
 		Symbol:              cfg.Symbol,
 		PriceInterval:       cfg.PriceInterval,
 		OrderQuantity:       cfg.OrderQuantity,
@@ -56,13 +60,14 @@ func NewGridCoordinator(
 	}
 
 	return &GridCoordinator{
-		symbol:      cfg.Symbol,
-		strategy:    grid.NewStrategy(strategyCfg),
-		slotManager: slotMgr,
-		monitor:     monitor,
-		store:       store,
-		logger:      logger,
-		executor:    executor,
+		symbol:        cfg.Symbol,
+		strategy:      grid.NewStrategy(strategyCfg),
+		slotManager:   slotMgr,
+		monitor:       riskMonitor,
+		regimeMonitor: regimeMonitor,
+		store:         store,
+		logger:        logger,
+		executor:      executor,
 	}
 }
 
@@ -167,7 +172,13 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 		})
 	}
 
-	strategyActions = c.strategy.CalculateActions(pVal, c.anchorPrice, atr, volFactor, isTriggeredNow, stratSlots)
+	// 4. Get Current Regime
+	currentRegime := pb.MarketRegime_MARKET_REGIME_RANGE
+	if c.regimeMonitor != nil {
+		currentRegime = c.regimeMonitor.GetRegime()
+	}
+
+	strategyActions = c.strategy.CalculateActions(pVal, c.anchorPrice, atr, volFactor, isTriggeredNow, currentRegime, stratSlots)
 	c.mu.Unlock()
 
 	// Phase 2: Execution (Unlocked - prevents blocking hot path)
@@ -182,6 +193,16 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	c.saveState(ctx, pVal)
 
 	return nil
+}
+
+func (c *GridCoordinator) GetRegimeMonitor() *monitor.RegimeMonitor {
+	return c.regimeMonitor
+}
+
+func (c *GridCoordinator) SetStrategyID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.strategy.SetStrategyID(id)
 }
 
 func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) {

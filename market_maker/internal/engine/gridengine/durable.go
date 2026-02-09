@@ -5,6 +5,7 @@ import (
 	"market_maker/internal/core"
 	"market_maker/internal/engine"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/monitor"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
@@ -23,7 +24,7 @@ func NewDBOSGridEngine(
 	dbosCtx dbos.DBOSContext,
 	exchanges map[string]core.IExchange,
 	executor core.IOrderExecutor,
-	monitor core.IRiskMonitor,
+	riskMonitor core.IRiskMonitor,
 	store core.IStateStore,
 	logger core.ILogger,
 	slotMgr core.IPositionManager,
@@ -43,7 +44,8 @@ func NewDBOSGridEngine(
 		logger:      logger.WithField("component", "dbos_grid_engine"),
 	}
 
-	e.coordinator = NewGridCoordinator(cfg, slotMgr, monitor, store, e.logger, e)
+	rm := monitor.NewRegimeMonitor(exch, logger, cfg.Symbol)
+	e.coordinator = NewGridCoordinator(cfg, slotMgr, riskMonitor, rm, store, e.logger, e)
 	return e
 }
 

@@ -28,7 +28,7 @@ func TestGridStrategy_CalculateActions_Neutral(t *testing.T) {
 	levels := []Slot{}
 
 	// Test 1: Initial state (should have 2 Buy and 2 Sell orders)
-	actions := strat.CalculateActions(currentPrice, anchorPrice, decimal.Zero, 0, false, levels)
+	actions := strat.CalculateActions(currentPrice, anchorPrice, decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, levels)
 
 	buyCount := 0
 	sellCount := 0
@@ -61,7 +61,7 @@ func TestGridStrategy_WithRiskTriggered(t *testing.T) {
 	strat := NewStrategy(cfg)
 
 	// When risk is triggered, we want no opening BUY orders. Sells are allowed (e.g. to reduce inventory or short).
-	actions := strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, []Slot{})
+	actions := strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, pb.MarketRegime_MARKET_REGIME_RANGE, []Slot{})
 
 	// Should have Sells but NO Buys
 	for _, a := range actions {
@@ -79,7 +79,7 @@ func TestGridStrategy_WithRiskTriggered(t *testing.T) {
 			SlotStatus:     pb.SlotStatus_SLOT_STATUS_FREE,
 		},
 	}
-	actions = strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, levels)
+	actions = strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, pb.MarketRegime_MARKET_REGIME_RANGE, levels)
 
 	// Expect closing sell order + potentially opening sell orders
 	foundClosing := false

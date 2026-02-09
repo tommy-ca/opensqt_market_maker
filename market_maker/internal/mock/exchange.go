@@ -125,6 +125,8 @@ func (m *MockExchange) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest
 		return nil, fmt.Errorf("injected error: rate limit exceeded (429)")
 	}
 
+	fmt.Printf("MOCK: Placing %s %s @ %s qty %s OID=%s\n", req.Side, req.Symbol, pbu.ToGoDecimal(req.Price), pbu.ToGoDecimal(req.Quantity), req.ClientOrderId)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -132,7 +134,11 @@ func (m *MockExchange) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest
 	if req.ClientOrderId != "" {
 		if existingID, exists := m.clientOrderMap[req.ClientOrderId]; exists {
 			if existingOrder, ok := m.orders[existingID]; ok {
-				return existingOrder, nil
+				if existingOrder.Status == pb.OrderStatus_ORDER_STATUS_NEW || existingOrder.Status == pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+					return existingOrder, nil
+				}
+				// If it's already filled or canceled, a real exchange would reject duplicate OID
+				return nil, fmt.Errorf("duplicate client order id: %s (existing order %d is %s)", req.ClientOrderId, existingID, existingOrder.Status)
 			}
 		}
 	}

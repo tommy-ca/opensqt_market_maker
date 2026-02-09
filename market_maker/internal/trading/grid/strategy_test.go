@@ -31,7 +31,7 @@ func TestStrategy_CalculateActions(t *testing.T) {
 	// New logic auto-generates orders for active window (Size 2)
 	// Price 100, Interval 10. Buy [90, 80], Sell [110, 120]
 	slots := []grid.Slot{}
-	actions := strat.CalculateActions(currentPrice, anchorPrice, atr, 0, false, slots)
+	actions := strat.CalculateActions(currentPrice, anchorPrice, atr, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, slots)
 	assert.Len(t, actions, 4)
 
 	slots = []grid.Slot{
@@ -39,12 +39,12 @@ func TestStrategy_CalculateActions(t *testing.T) {
 		{Price: decimal.NewFromInt(110), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE, PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY},
 	}
 
-	actions = strat.CalculateActions(currentPrice, anchorPrice, atr, 0, false, slots)
+	actions = strat.CalculateActions(currentPrice, anchorPrice, atr, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, slots)
 	assert.Len(t, actions, 4) // 90, 110 (existing) + 80, 120 (new)
 
 	// Test Risk Triggered
 	// Should only generate Sells (110, 120)
-	actions = strat.CalculateActions(currentPrice, anchorPrice, atr, 0, true, slots)
+	actions = strat.CalculateActions(currentPrice, anchorPrice, atr, 0, true, pb.MarketRegime_MARKET_REGIME_RANGE, slots)
 	assert.Len(t, actions, 2, "Only Sell orders should be placed when risk is triggered")
 	assert.Equal(t, pb.OrderSide_ORDER_SIDE_SELL, actions[0].Request.Side)
 
@@ -78,6 +78,7 @@ func TestStrategy_RiskTriggeredCancelsLockedBuys(t *testing.T) {
 		decimal.Zero,              // ATR
 		1.0,                       // volatilityFactor
 		true,                      // isRiskTriggered
+		pb.MarketRegime_MARKET_REGIME_RANGE,
 		[]grid.Slot{lockedBuy},
 	)
 
