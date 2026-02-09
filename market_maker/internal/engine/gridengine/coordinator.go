@@ -32,6 +32,7 @@ type GridCoordinator struct {
 
 	anchorPrice     decimal.Decimal
 	isRiskTriggered bool
+	lastSaveTime    time.Time
 	mu              sync.Mutex
 }
 
@@ -68,6 +69,7 @@ func NewGridCoordinator(
 		store:         store,
 		logger:        logger,
 		executor:      executor,
+		lastSaveTime:  time.Now(),
 	}
 }
 
@@ -76,8 +78,14 @@ func (c *GridCoordinator) Start(ctx context.Context, exch core.IExchange) error 
 
 	// 1. Restore Local State (Warm Boot)
 	state, err := c.store.LoadState(ctx)
-	if err == nil && state != nil {
-		_ = c.slotManager.RestoreState(state.Slots)
+	if err != nil {
+		return fmt.Errorf("failed to load state from store: %w", err)
+	}
+
+	if state != nil {
+		if err := c.slotManager.RestoreState(state.Slots); err != nil {
+			return fmt.Errorf("failed to restore state in slot manager: %w", err)
+		}
 		c.anchorPrice = pbu.ToGoDecimal(state.LastPrice)
 		c.isRiskTriggered = state.IsRiskTriggered
 		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice, "risk_triggered", c.isRiskTriggered)
@@ -161,6 +169,7 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	mgrSlots := c.slotManager.GetSlots()
 	stratSlots := make([]grid.Slot, 0, len(mgrSlots))
 	for _, s := range mgrSlots {
+		s.Mu.RLock()
 		stratSlots = append(stratSlots, grid.Slot{
 			Price:          pbu.ToGoDecimal(s.Price),
 			PositionStatus: s.PositionStatus,
@@ -170,6 +179,7 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
 			OrderId:        s.OrderId,
 		})
+		s.Mu.RUnlock()
 	}
 
 	// 4. Get Current Regime
@@ -190,7 +200,16 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	}
 
 	// Phase 3: Persistence
-	c.saveState(ctx, pVal)
+	c.mu.Lock()
+	hasActivity := len(strategyActions) > 0 || len(riskActions) > 0
+	isHeartbeat := time.Since(c.lastSaveTime) > 30*time.Second
+	c.mu.Unlock()
+
+	if hasActivity || isHeartbeat {
+		if err := c.saveState(ctx, pVal); err != nil {
+			return fmt.Errorf("failed to save state: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -205,13 +224,18 @@ func (c *GridCoordinator) SetStrategyID(id string) {
 	c.strategy.SetStrategyID(id)
 }
 
-func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) {
+func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) error {
+	c.mu.Lock()
+	c.lastSaveTime = time.Now()
+	isRiskTriggered := c.isRiskTriggered
+	c.mu.Unlock()
+
 	snap := c.slotManager.GetSnapshot()
 	state := &pb.State{
 		Slots:           snap.Slots,
 		LastPrice:       pbu.FromGoDecimal(lastPrice),
 		LastUpdateTime:  time.Now().UnixNano(),
-		IsRiskTriggered: c.isRiskTriggered,
+		IsRiskTriggered: isRiskTriggered,
 	}
-	_ = c.store.SaveState(ctx, state)
+	return c.store.SaveState(ctx, state)
 }

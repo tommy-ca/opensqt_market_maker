@@ -65,20 +65,20 @@ func TestE2E_RegimeFiltering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
-	orders := exch.GetOrders()
-	hasBuy := false
-	hasSell := false
-	for _, o := range orders {
-		if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
-			hasBuy = true
+	assert.Eventually(t, func() bool {
+		orders := exch.GetOrders()
+		hasBuy := false
+		hasSell := false
+		for _, o := range orders {
+			if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+				hasBuy = true
+			}
+			if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
+				hasSell = true
+			}
 		}
-		if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
-			hasSell = true
-		}
-	}
-	assert.True(t, hasBuy, "Should have buy orders in Range")
-	assert.True(t, hasSell, "Should have sell orders in Range")
+		return hasBuy && hasSell
+	}, 1*time.Second, 10*time.Millisecond, "Should have buy and sell orders in Range")
 
 	// SCENARIO 2: BULL TREND (Sells disabled for opening)
 	exch.CancelAllOrders(ctx, "BTCUSDT", false)
@@ -93,22 +93,22 @@ func TestE2E_RegimeFiltering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
-	orders = exch.GetOrders()
-	hasBuy = false
-	hasSell = false
-	for _, o := range orders {
-		if o.Status == pb.OrderStatus_ORDER_STATUS_NEW {
-			if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
-				hasBuy = true
-			}
-			if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
-				hasSell = true
+	assert.Eventually(t, func() bool {
+		orders := exch.GetOrders()
+		hasBuy := false
+		hasSell := false
+		for _, o := range orders {
+			if o.Status == pb.OrderStatus_ORDER_STATUS_NEW {
+				if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+					hasBuy = true
+				}
+				if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
+					hasSell = true
+				}
 			}
 		}
-	}
-	assert.True(t, hasBuy, "Should have buy orders in Bull Trend")
-	assert.False(t, hasSell, "Should NOT have sell orders in Bull Trend")
+		return hasBuy && !hasSell
+	}, 1*time.Second, 10*time.Millisecond, "Should have buy orders and NOT have sell orders in Bull Trend")
 
 	// SCENARIO 3: BEAR TREND (Buys disabled for opening)
 	exch.CancelAllOrders(ctx, "BTCUSDT", false)
@@ -123,20 +123,20 @@ func TestE2E_RegimeFiltering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
-	orders = exch.GetOrders()
-	hasBuy = false
-	hasSell = false
-	for _, o := range orders {
-		if o.Status == pb.OrderStatus_ORDER_STATUS_NEW {
-			if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
-				hasBuy = true
-			}
-			if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
-				hasSell = true
+	assert.Eventually(t, func() bool {
+		orders := exch.GetOrders()
+		hasBuy := false
+		hasSell := false
+		for _, o := range orders {
+			if o.Status == pb.OrderStatus_ORDER_STATUS_NEW {
+				if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+					hasBuy = true
+				}
+				if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
+					hasSell = true
+				}
 			}
 		}
-	}
-	assert.False(t, hasBuy, "Should NOT have buy orders in Bear Trend")
-	assert.True(t, hasSell, "Should have sell orders in Bear Trend")
+		return !hasBuy && hasSell
+	}, 1*time.Second, 10*time.Millisecond, "Should NOT have buy orders and have sell orders in Bear Trend")
 }

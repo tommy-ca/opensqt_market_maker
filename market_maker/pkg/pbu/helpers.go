@@ -45,10 +45,19 @@ func AddBrokerPrefix(exchangeName, clientOID string) string {
 }
 
 func truncateID(id string, maxLen int) string {
-	if len(id) > maxLen {
-		return id[:maxLen]
+	if len(id) <= maxLen {
+		return id
 	}
-	return id
+
+	// Strategy: Preserve the last 16 characters (likely containing the unique price/side)
+	// and use the remaining space for the beginning of the ID (likely containing the broker prefix).
+	suffixLen := 16
+	if maxLen <= suffixLen {
+		return id[len(id)-maxLen:]
+	}
+
+	prefixLen := maxLen - suffixLen
+	return id[:prefixLen] + id[len(id)-suffixLen:]
 }
 
 // ParseCompactOrderID reconstructs price and side from a compact ClientOrderID.

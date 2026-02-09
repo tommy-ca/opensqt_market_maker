@@ -6,16 +6,26 @@ import (
 	"market_maker/pkg/pbu"
 )
 
+// ReconcileResult contains the outcome of a reconciliation pass
+type ReconcileResult struct {
+	OrderMap       map[int64]*core.InventorySlot
+	ClientOMap     map[string]*core.InventorySlot
+	UnmatchedCount int
+	ZombiesCleared int
+}
+
 // ReconcileOrders matches exchange open orders with local slots.
-// It returns the updated order and clientOID maps.
+// It returns the updated order and clientOID maps, and a report of unmatched items.
 func ReconcileOrders(
 	logger core.ILogger,
 	slots map[string]*core.InventorySlot,
 	orders []*pb.Order,
-) (map[int64]*core.InventorySlot, map[string]*core.InventorySlot, map[string]*pb.Order) {
+) ReconcileResult {
 
-	orderMap := make(map[int64]*core.InventorySlot)
-	clientOMap := make(map[string]*core.InventorySlot)
+	res := ReconcileResult{
+		OrderMap:   make(map[int64]*core.InventorySlot),
+		ClientOMap: make(map[string]*core.InventorySlot),
+	}
 
 	// 1. Identify which slots SHOULD be locked
 	activePrices := make(map[string]*pb.Order)
@@ -28,9 +38,9 @@ func ReconcileOrders(
 		slot.Mu.Lock()
 		if order, ok := activePrices[priceKey]; ok {
 			// Slot has an active order on exchange
-			orderMap[order.OrderId] = slot
+			res.OrderMap[order.OrderId] = slot
 			if order.ClientOrderId != "" {
-				clientOMap[order.ClientOrderId] = slot
+				res.ClientOMap[order.ClientOrderId] = slot
 			}
 
 			slot.OrderId = order.OrderId
@@ -50,18 +60,16 @@ func ReconcileOrders(
 				slot.ClientOid = ""
 				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
 				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
+				res.ZombiesCleared++
 			}
 		}
 		slot.Mu.Unlock()
 	}
 
-	return orderMap, clientOMap, activePrices
-}
-
-// MapRemainingOrdersToPositions attempts to map exchange orders that didn't match a grid price
-// to positions or other state. (Placeholder for future drift correction)
-func MapRemainingOrdersToPositions(logger core.ILogger, remainingOrders map[string]*pb.Order) {
-	for price, order := range remainingOrders {
+	res.UnmatchedCount = len(activePrices)
+	for price, order := range activePrices {
 		logger.Warn("Unmatched exchange order detected", "price", price, "order_id", order.OrderId)
 	}
+
+	return res
 }

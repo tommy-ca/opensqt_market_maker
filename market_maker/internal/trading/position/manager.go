@@ -419,11 +419,15 @@ func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 
 	pbSlots := make(map[string]*pb.InventorySlot)
 	for k, v := range spm.slots {
+		v.Mu.RLock()
 		pbSlots[k] = v.InventorySlot
+		v.Mu.RUnlock()
 	}
 
 	return &pb.PositionManagerSnapshot{
-		Slots: pbSlots,
+		Symbol:     spm.symbol,
+		Slots:      pbSlots,
+		TotalSlots: atomic.LoadInt64(&spm.totalSlots),
 	}
 }
 
@@ -431,9 +435,9 @@ func (spm *SuperPositionManager) SyncOrders(orders []*pb.Order) {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
 
-	om, com, _ := trading.ReconcileOrders(spm.logger, spm.slots, orders)
-	spm.orderMap = om
-	spm.clientOMap = com
+	result := trading.ReconcileOrders(spm.logger, spm.slots, orders)
+	spm.orderMap = result.OrderMap
+	spm.clientOMap = result.ClientOMap
 }
 
 func (spm *SuperPositionManager) CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error) {

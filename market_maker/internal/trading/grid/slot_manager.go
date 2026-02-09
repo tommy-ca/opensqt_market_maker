@@ -70,21 +70,20 @@ func (m *SlotManager) SyncOrders(orders []*pb.Order) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	om, com, remaining := trading.ReconcileOrders(m.logger, m.slots, orders)
-	m.orderMap = om
-	m.clientOMap = com
-
-	trading.MapRemainingOrdersToPositions(m.logger, remaining)
+	result := trading.ReconcileOrders(m.logger, m.slots, orders)
+	m.orderMap = result.OrderMap
+	m.clientOMap = result.ClientOMap
 }
 
 // OnOrderUpdate handles an order execution report
 func (m *SlotManager) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	slot := m.orderMap[update.OrderId]
 	if slot == nil && update.ClientOrderId != "" {
 		slot = m.clientOMap[update.ClientOrderId]
 	}
-	m.mu.RUnlock()
 
 	if slot == nil {
 		return fmt.Errorf("slot not found for order %d", update.OrderId)
@@ -128,12 +127,12 @@ func (m *SlotManager) handleCanceled(slot *core.InventorySlot, update *pb.OrderU
 }
 
 func (m *SlotManager) resetSlotLocked(slot *core.InventorySlot) {
-	m.mu.Lock()
+	// NOTE: m.mu and slot.Mu MUST be held by caller.
+	// We follow the hierarchy: m.mu -> slot.Mu
 	delete(m.orderMap, slot.OrderId)
 	if slot.ClientOid != "" {
 		delete(m.clientOMap, slot.ClientOid)
 	}
-	m.mu.Unlock()
 
 	slot.OrderId = 0
 	slot.ClientOid = ""
