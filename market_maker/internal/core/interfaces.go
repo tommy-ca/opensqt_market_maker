@@ -106,7 +106,7 @@ type IPositionManager interface {
 	CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error)
 	ApplyActionResults(results []OrderActionResult) error
 	OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error
-	SyncOrders(orders []*pb.Order)
+	SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal)
 	CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	CancelAllSellOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	GetSlots() map[string]*InventorySlot
@@ -114,6 +114,7 @@ type IPositionManager interface {
 	GetSnapshot() *pb.PositionManagerSnapshot
 	CreateReconciliationSnapshot() map[string]*InventorySlot
 	UpdateOrderIndex(orderID int64, clientOID string, slot *InventorySlot)
+	MarkSlotsPending(actions []*pb.OrderAction)
 	ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error
 	RestoreFromExchangePosition(totalPosition decimal.Decimal)
 	OnUpdate(callback func(*pb.PositionUpdate))

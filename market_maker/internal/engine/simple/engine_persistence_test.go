@@ -78,10 +78,12 @@ func (m *MockPositionManagerForRollback) OnUpdate(callback func(*pb.PositionUpda
 func (m *MockPositionManagerForRollback) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 }
 
+func (m *MockPositionManagerForRollback) MarkSlotsPending(actions []*pb.OrderAction) {}
 func (m *MockPositionManagerForRollback) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	return nil
 }
-func (m *MockPositionManagerForRollback) SyncOrders(orders []*pb.Order) {}
+func (m *MockPositionManagerForRollback) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
+}
 
 func TestOnOrderUpdate_PersistenceFailure_DoesNotMutateState(t *testing.T) {
 	// Setup

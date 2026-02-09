@@ -3,7 +3,7 @@ package e2e
 import (
 	"context"
 	"database/sql"
-	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,10 +42,7 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := "test_recovery.db"
-	_ = os.Remove(dbPath)
-	defer os.Remove(dbPath)
-
+	dbPath := filepath.Join(t.TempDir(), "test_recovery.db")
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -180,10 +177,7 @@ func TestE2E_HardCrash_OfflineFill(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := "test_hard_crash.db"
-	_ = os.Remove(dbPath)
-	defer os.Remove(dbPath)
-
+	dbPath := filepath.Join(t.TempDir(), "test_hard_crash.db")
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -307,10 +301,7 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := "test_risk.db"
-	_ = os.Remove(dbPath)
-	defer os.Remove(dbPath)
-
+	dbPath := filepath.Join(t.TempDir(), "test_risk.db")
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -432,14 +423,16 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	err = eng.OnPriceUpdate(ctx, updateRisk)
 	require.NoError(t, err)
 
-	// Wait for processing
-	time.Sleep(50 * time.Millisecond) // This sleep is fine as we are checking for the ABSENCE of new orders, so we need to wait a bit
-
-	orders2 := exch.GetOrders()
-	// Assert: No *new* Buy orders placed
-	for _, o := range orders2 {
-		if o.OrderId > lastID {
-			assert.NotEqual(t, pb.OrderSide_ORDER_SIDE_BUY, o.Side, "Should not place new BUY orders when risk triggered")
+	// Wait and verify no new BUY orders
+	assert.Eventually(t, func() bool {
+		orders2 := exch.GetOrders()
+		for _, o := range orders2 {
+			if o.OrderId > lastID {
+				if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+					return false
+				}
+			}
 		}
-	}
+		return true
+	}, 1*time.Second, 10*time.Millisecond, "Should not place new BUY orders when risk triggered")
 }

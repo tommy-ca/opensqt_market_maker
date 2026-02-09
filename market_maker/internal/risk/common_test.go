@@ -82,6 +82,9 @@ func (m *mockPositionManager) CreateReconciliationSnapshot() map[string]*core.In
 func (m *mockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 	m.Called(orderID, clientOID, slot)
 }
+func (m *mockPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	m.Called(actions)
+}
 func (m *mockPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	args := m.Called(context.Background(), symbol, exchangeSize)
 	return args.Error(0)
@@ -104,8 +107,8 @@ func (m *mockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 func (m *mockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
-func (m *mockPositionManager) SyncOrders(orders []*pb.Order) {
-	m.Called(orders)
+func (m *mockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
+	m.Called(orders, exchangePosition)
 }
 
 type MockExchange struct {

@@ -66,11 +66,11 @@ func (m *SlotManager) GetSlotCount() int {
 }
 
 // SyncOrders updates the internal mappings for open orders
-func (m *SlotManager) SyncOrders(orders []*pb.Order) {
+func (m *SlotManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	result := trading.ReconcileOrders(m.logger, m.slots, orders)
+	result := trading.ReconcileOrders(m.logger, m.slots, orders, exchangePosition)
 	m.orderMap = result.OrderMap
 	m.clientOMap = result.ClientOMap
 }
@@ -143,7 +143,10 @@ func (m *SlotManager) resetSlotLocked(slot *core.InventorySlot) {
 func (m *SlotManager) GetOrCreateSlot(price decimal.Decimal) *core.InventorySlot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.getOrCreateSlotLocked(price)
+}
 
+func (m *SlotManager) getOrCreateSlotLocked(price decimal.Decimal) *core.InventorySlot {
 	key := price.String()
 	if s, ok := m.slots[key]; ok {
 		return s
@@ -221,23 +224,12 @@ func (m *SlotManager) CalculateAdjustments(ctx context.Context, newPrice decimal
 }
 
 func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error {
-	type updateItem struct {
-		slot *core.InventorySlot
-		res  core.OrderActionResult
-	}
-	var updates []updateItem
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	// Phase 1: Identify slots and collect results
 	for _, res := range results {
 		priceVal := pbu.ToGoDecimal(res.Action.Price)
-		slot := m.GetOrCreateSlot(priceVal)
-		updates = append(updates, updateItem{slot: slot, res: res})
-	}
-
-	// Phase 2: Apply to slots and manager maps
-	for _, item := range updates {
-		slot := item.slot
-		res := item.res
+		slot := m.getOrCreateSlotLocked(priceVal)
 
 		slot.Mu.Lock()
 		if res.Error != nil {
@@ -250,21 +242,14 @@ func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error
 			slot.OrderPrice = res.Order.Price
 			slot.OrderStatus = res.Order.Status
 
-			// Update manager maps while holding slot lock? No, that's what we want to avoid.
-			// But we are ALREADY holding slot.Mu here.
-			// The rule is: Always acquire m.mu BEFORE slot.Mu.
-			// So I should release slot.Mu, or acquire m.mu before slot.Mu.
-		}
-		slot.Mu.Unlock()
-
-		if res.Error == nil && res.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && res.Order != nil {
-			m.mu.Lock()
+			// Update manager maps while holding BOTH locks.
+			// This is safe because we follow the hierarchy: m.mu -> slot.Mu
 			m.orderMap[res.Order.OrderId] = slot
 			if res.Order.ClientOrderId != "" {
 				m.clientOMap[res.Order.ClientOrderId] = slot
 			}
-			m.mu.Unlock()
 		}
+		slot.Mu.Unlock()
 	}
 	return nil
 }
@@ -317,6 +302,25 @@ func (m *SlotManager) UpdateOrderIndex(orderID int64, clientOID string, slot *co
 	}
 	if clientOID != "" {
 		m.clientOMap[clientOID] = slot
+	}
+}
+
+func (m *SlotManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, action := range actions {
+		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			continue
+		}
+		priceVal := pbu.ToGoDecimal(action.Price)
+		slot := m.getOrCreateSlotLocked(priceVal)
+
+		slot.Mu.Lock()
+		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+		}
+		slot.Mu.Unlock()
 	}
 }
 

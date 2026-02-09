@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"market_maker/internal/core"
 	"market_maker/internal/exchange"
 	"market_maker/internal/mock"
 	"market_maker/internal/pb"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 )
 
@@ -42,12 +44,12 @@ func TestE2E_gRPCLoopback(t *testing.T) {
 	remoteAddr := fmt.Sprintf("localhost:%d", port)
 
 	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
-
-	remoteExch, err := exchange.NewRemoteExchange(remoteAddr, logger)
-	if err != nil {
-		t.Fatalf("Failed to create remote exchange: %v", err)
-	}
+	var remoteExch core.IExchange
+	assert.Eventually(t, func() bool {
+		var err error
+		remoteExch, err = exchange.NewRemoteExchange(remoteAddr, logger)
+		return err == nil
+	}, 2*time.Second, 50*time.Millisecond, "Failed to connect to gRPC server")
 
 	// 3. Verify Operations through gRPC
 	ctx := context.Background()

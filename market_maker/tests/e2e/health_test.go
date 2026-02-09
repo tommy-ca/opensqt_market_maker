@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"market_maker/internal/infrastructure/server"
 )
 
@@ -93,35 +95,31 @@ func TestE2E_HealthServer(t *testing.T) {
 	defer func() { _ = healthServer.Stop(context.Background()) }()
 
 	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9999/health")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 1*time.Second, 10*time.Millisecond, "Health server did not start")
 
 	// 3. Test /health endpoint (liveness probe)
 	resp, err := http.Get("http://localhost:9999/health")
-	if err != nil {
-		t.Fatalf("Failed to query /health endpoint: %v", err)
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	t.Log("✓ /health endpoint returns 200 OK")
 
 	// 4. Test /status endpoint (detailed diagnostics)
 	resp, err = http.Get("http://localhost:9999/status")
-	if err != nil {
-		t.Fatalf("Failed to query /status endpoint: %v", err)
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
-
-	if resp.Header.Get("Content-Type") != "application/json" {
-		t.Error("Expected Content-Type: application/json")
-	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 	t.Log("✓ /status endpoint returns JSON diagnostics")
 
@@ -130,15 +128,14 @@ func TestE2E_HealthServer(t *testing.T) {
 		return fmt.Errorf("fail")
 	})
 
-	resp, err = http.Get("http://localhost:9999/health")
-	if err != nil {
-		t.Fatalf("Failed to query /health endpoint: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("Expected status 503, got %d", resp.StatusCode)
-	}
+	assert.Eventually(t, func() bool {
+		resp, err := http.Get("http://localhost:9999/health")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusServiceUnavailable
+	}, 1*time.Second, 10*time.Millisecond, "Health server did not report unhealthy")
 
 	t.Log("✓ /health endpoint returns 503 when unhealthy")
 }

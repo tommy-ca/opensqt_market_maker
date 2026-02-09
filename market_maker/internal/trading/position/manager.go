@@ -364,6 +364,21 @@ func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionRe
 }
 
 func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
+	// 1. Global Idempotency Check
+	// We skip this for partial fills because multiple updates with same status are expected
+	if update.Status != pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		updateKey := fmt.Sprintf("%d-%s", update.OrderId, update.Status.String())
+		spm.updateMu.Lock()
+		if lastSeen, exists := spm.processedUpdates[updateKey]; exists {
+			if time.Since(lastSeen) < 5*time.Minute {
+				spm.updateMu.Unlock()
+				return nil
+			}
+		}
+		spm.processedUpdates[updateKey] = time.Now()
+		spm.updateMu.Unlock()
+	}
+
 	spm.mu.RLock()
 	slot, ok := spm.orderMap[update.OrderId]
 	if !ok {
@@ -377,6 +392,17 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 
 	slot.Mu.Lock()
 	defer slot.Mu.Unlock()
+
+	// 2. Slot-level Idempotency Check for partial fills
+	if update.Status == pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		newExecuted := pbu.ToGoDecimal(update.ExecutedQty)
+		oldExecuted := pbu.ToGoDecimal(slot.OrderFilledQty)
+		if newExecuted.LessThanOrEqual(oldExecuted) {
+			return nil // Duplicate or stale partial fill
+		}
+		slot.OrderFilledQty = update.ExecutedQty
+		return nil
+	}
 
 	if update.Status == pb.OrderStatus_ORDER_STATUS_FILLED {
 		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
@@ -431,11 +457,11 @@ func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	}
 }
 
-func (spm *SuperPositionManager) SyncOrders(orders []*pb.Order) {
+func (spm *SuperPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
 
-	result := trading.ReconcileOrders(spm.logger, spm.slots, orders)
+	result := trading.ReconcileOrders(spm.logger, spm.slots, orders, exchangePosition)
 	spm.orderMap = result.OrderMap
 	spm.clientOMap = result.ClientOMap
 }
@@ -503,6 +529,25 @@ func (spm *SuperPositionManager) UpdateOrderIndex(orderID int64, clientOID strin
 	}
 	if clientOID != "" {
 		spm.clientOMap[clientOID] = slot
+	}
+}
+
+func (spm *SuperPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
+
+	for _, action := range actions {
+		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			continue
+		}
+		priceVal := pbu.ToGoDecimal(action.Price)
+		slot := spm.getOrCreateSlotLocked(priceVal)
+
+		slot.Mu.Lock()
+		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+		}
+		slot.Mu.Unlock()
 	}
 }
 

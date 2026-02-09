@@ -141,6 +141,8 @@ func (m *MockPositionManager) CreateReconciliationSnapshot() map[string]*core.In
 }
 func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 }
+func (m *MockPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+}
 func (m *MockPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	return nil
 }
@@ -161,7 +163,7 @@ func (m *MockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
-func (m *MockPositionManager) SyncOrders(orders []*pb.Order) {}
+func (m *MockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {}
 
 func TestRiskServiceServer_GetCircuitBreakerStatus(t *testing.T) {
 	cb := NewCircuitBreaker(CircuitConfig{

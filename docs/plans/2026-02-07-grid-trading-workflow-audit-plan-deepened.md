@@ -108,11 +108,11 @@ func TestEngines(t *testing.T) {
 ---
 
 ## Acceptance Criteria
-- [ ] `market_maker/tests/e2e/workflow_test.go` exists and compiles.
-- [ ] Tests cover "Crash -> Offline Fill -> Restart" flow with **explicit reconciliation check**.
-- [ ] Tests cover "Risk Trigger -> Halt" flow across **both engines**.
-- [ ] `SyncOrders` is verified to be called during `Start()` sequence.
-- [ ] `client_order_id` generation is verified to be deterministic.
+- [x] `market_maker/tests/e2e/workflow_test.go` exists and compiles.
+- [x] Tests cover "Crash -> Offline Fill -> Restart" flow with **explicit reconciliation check**.
+- [x] Tests cover "Risk Trigger -> Halt" flow across **both engines**.
+- [x] `SyncOrders` is verified to be called during `Start()` sequence.
+- [x] `client_order_id` generation is verified to be deterministic.
 
 ## References
 - `docs/brainstorms/2026-02-07-grid-trading-workflow-audit-brainstorm.md`

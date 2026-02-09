@@ -203,6 +203,29 @@ func (m *MockPositionManager) CreateReconciliationSnapshot() map[string]*core.In
 func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 }
 
+func (m *MockPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, action := range actions {
+		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			continue
+		}
+		priceVal := pbu.ToGoDecimal(action.Price)
+		key := priceVal.String()
+		if slot, ok := m.slots[key]; ok {
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+		} else {
+			m.slots[key] = &core.InventorySlot{
+				InventorySlot: &pb.InventorySlot{
+					Price:      action.Price,
+					SlotStatus: pb.SlotStatus_SLOT_STATUS_PENDING,
+				},
+			}
+		}
+	}
+}
+
 func (m *MockPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	return nil
 }
@@ -229,7 +252,7 @@ func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
 }
 
-func (m *MockPositionManager) SyncOrders(orders []*pb.Order) {
+func (m *MockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

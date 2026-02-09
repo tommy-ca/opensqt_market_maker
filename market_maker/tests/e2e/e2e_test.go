@@ -15,17 +15,18 @@ import (
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
-	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	testDB = "e2e_test.db"
 	symbol = "BTCUSDT"
 )
 
@@ -104,13 +105,12 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 }
 
 func TestE2E_CrashRecovery(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
 
 	_ = engine.Start(ctx)
@@ -120,23 +120,20 @@ func TestE2E_CrashRecovery(t *testing.T) {
 	_ = pm.Initialize(initialPrice)
 	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	if len(openOrders) == 0 {
-		t.Fatal("No orders placed")
-	}
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
 	// 2. Stop engine - Simulate Crash
 	_ = engine.Stop()
 
 	// 3. Restart engine - Restore State
-	engine2, _, _, cleanup2 := setupEngine(t, exch, testDB)
+	engine2, _, _, cleanup2 := setupEngine(t, exch, dbPath)
 	defer cleanup2()
 
 	err := engine2.Start(ctx)
-	if err != nil {
-		t.Fatalf("Engine restart failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify restored state
 	restoredPM := engine2.GetPositionManager()
@@ -146,13 +143,12 @@ func TestE2E_CrashRecovery(t *testing.T) {
 }
 
 func TestE2E_RiskProtection(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, rm, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, rm, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
 	_ = engine.Start(ctx)
 
@@ -161,11 +157,10 @@ func TestE2E_RiskProtection(t *testing.T) {
 
 	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	if len(openOrders) == 0 {
-		t.Fatal("No orders placed")
-	}
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
 	// Trigger Risk Anomaly
 	anomalyCandle := &pb.Candle{
@@ -186,33 +181,31 @@ func TestE2E_RiskProtection(t *testing.T) {
 	}
 	rm.HandleKlineUpdate(anomalyCandle)
 
-	time.Sleep(50 * time.Millisecond) // Wait for global trigger goroutine
-
-	if !rm.IsTriggered() {
-		t.Fatal("Risk monitor did not trigger")
-	}
+	assert.Eventually(t, func() bool {
+		return rm.IsTriggered()
+	}, 1*time.Second, 10*time.Millisecond, "Risk monitor did not trigger")
 
 	// Next price update should trigger engine to cancel buys
 	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(39999))})
 
-	time.Sleep(200 * time.Millisecond)
-
-	finalOpenOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	for _, o := range finalOpenOrders {
-		if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
-			t.Errorf("Buy order %d still open after risk trigger", o.OrderId)
+	assert.Eventually(t, func() bool {
+		finalOpenOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		for _, o := range finalOpenOrders {
+			if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+				return false
+			}
 		}
-	}
+		return true
+	}, 1*time.Second, 10*time.Millisecond, "Buy orders still open after risk trigger")
 }
 
 func TestE2E_TradingFlow(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
 	_ = engine.Start(ctx)
 
@@ -227,11 +220,10 @@ func TestE2E_TradingFlow(t *testing.T) {
 	// 1. First price update - places orders
 	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	if len(openOrders) == 0 {
-		t.Fatal("No orders placed")
-	}
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
 	// 2. Price drop - fill a buy order
 	// Level 44990 should have a buy order
@@ -239,35 +231,27 @@ func TestE2E_TradingFlow(t *testing.T) {
 	exch.UpdatePrice(symbol, dropPrice)
 
 	// Wait for fill notification and engine processing
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify slot is filled in PM
-	slots := pm.GetSlots()
-	foundFilled := false
-	for _, s := range slots {
-		if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			foundFilled = true
-			break
+	assert.Eventually(t, func() bool {
+		slots := pm.GetSlots()
+		for _, s := range slots {
+			if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+				return true
+			}
 		}
-	}
-	if !foundFilled {
-		t.Error("No slot marked as FILLED after price drop")
-	}
+		return false
+	}, 1*time.Second, 10*time.Millisecond, "No slot marked as FILLED after price drop")
 
 	// 3. Price rise - should place a sell order for the filled slot
 	risePrice := decimal.NewFromInt(45010)
 	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(risePrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	allOrders := exch.GetOrders()
-	foundSell := false
-	for _, o := range allOrders {
-		if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
-			foundSell = true
-			break
+	assert.Eventually(t, func() bool {
+		allOrders := exch.GetOrders()
+		for _, o := range allOrders {
+			if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
+				return true
+			}
 		}
-	}
-	if !foundSell {
-		t.Error("No SELL order placed after repositioning")
-	}
+		return false
+	}, 1*time.Second, 10*time.Millisecond, "No SELL order placed after repositioning")
 }

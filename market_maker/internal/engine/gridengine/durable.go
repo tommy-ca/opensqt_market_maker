@@ -5,7 +5,6 @@ import (
 	"market_maker/internal/core"
 	"market_maker/internal/engine"
 	"market_maker/internal/pb"
-	"market_maker/internal/trading/monitor"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
@@ -14,7 +13,6 @@ import (
 type DBOSGridEngine struct {
 	coordinator *GridCoordinator
 	dbosCtx     dbos.DBOSContext
-	exchange    core.IExchange
 	executor    core.IOrderExecutor
 	slotManager core.IPositionManager
 	logger      core.ILogger
@@ -30,28 +28,31 @@ func NewDBOSGridEngine(
 	slotMgr core.IPositionManager,
 	cfg Config,
 ) engine.Engine {
-	var exch core.IExchange
-	for _, e := range exchanges {
-		exch = e
-		break
-	}
-
 	e := &DBOSGridEngine{
 		dbosCtx:     dbosCtx,
-		exchange:    exch,
 		executor:    executor,
 		slotManager: slotMgr,
 		logger:      logger.WithField("component", "dbos_grid_engine"),
 	}
 
-	rm := monitor.NewRegimeMonitor(exch, logger, cfg.Symbol)
-	e.coordinator = NewGridCoordinator(cfg, slotMgr, riskMonitor, rm, store, e.logger, e)
+	deps := GridCoordinatorDeps{
+		Cfg:         cfg,
+		Exchanges:   exchanges,
+		SlotMgr:     slotMgr,
+		RiskMonitor: riskMonitor,
+		Store:       store,
+		Logger:      e.logger,
+		Executor:    e,
+	}
+
+	e.coordinator = NewGridCoordinator(deps)
+
 	return e
 }
 
 func (e *DBOSGridEngine) Start(ctx context.Context) error {
 	e.logger.Info("Starting DBOS Grid Engine")
-	if err := e.coordinator.Start(ctx, e.exchange); err != nil {
+	if err := e.coordinator.Start(ctx); err != nil {
 		return err
 	}
 	return e.dbosCtx.Launch()

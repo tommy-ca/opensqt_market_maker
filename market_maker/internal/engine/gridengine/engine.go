@@ -4,7 +4,6 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
-	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/retry"
 	"strings"
@@ -15,7 +14,6 @@ import (
 // GridEngine is a lean orchestrator for grid trading
 type GridEngine struct {
 	coordinator *GridCoordinator
-	exchange    core.IExchange
 	executor    core.IOrderExecutor
 	execPool    *concurrency.WorkerPool
 	slotManager core.IPositionManager
@@ -32,22 +30,25 @@ func NewGridEngine(
 	slotMgr core.IPositionManager,
 	cfg Config,
 ) *GridEngine {
-	var exch core.IExchange
-	for _, e := range exchanges {
-		exch = e
-		break
-	}
-
 	e := &GridEngine{
-		exchange:    exch,
 		executor:    executor,
 		execPool:    execPool,
 		slotManager: slotMgr,
 		logger:      logger.WithField("component", "grid_engine"),
 	}
 
-	rm := monitor.NewRegimeMonitor(exch, logger, cfg.Symbol)
-	e.coordinator = NewGridCoordinator(cfg, slotMgr, riskMonitor, rm, store, e.logger, e)
+	deps := GridCoordinatorDeps{
+		Cfg:         cfg,
+		Exchanges:   exchanges,
+		SlotMgr:     slotMgr,
+		RiskMonitor: riskMonitor,
+		Store:       store,
+		Logger:      e.logger,
+		Executor:    e,
+	}
+
+	e.coordinator = NewGridCoordinator(deps)
+
 	return e
 }
 
@@ -57,7 +58,7 @@ func (e *GridEngine) GetCoordinator() *GridCoordinator {
 
 func (e *GridEngine) Start(ctx context.Context) error {
 	e.logger.Info("Starting Grid Engine")
-	return e.coordinator.Start(ctx, e.exchange)
+	return e.coordinator.Start(ctx)
 }
 
 func (e *GridEngine) Stop() error {
