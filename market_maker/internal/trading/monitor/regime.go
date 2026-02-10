@@ -5,8 +5,6 @@ import (
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"sync"
-
-	"github.com/shopspring/decimal"
 )
 
 // RegimeMonitor tracks market conditions and determines the current trading regime
@@ -15,8 +13,6 @@ type RegimeMonitor struct {
 	logger   core.ILogger
 	symbol   string
 
-	// Indicators (simplified)
-	rsi           decimal.Decimal
 	currentRegime pb.MarketRegime
 	mu            sync.RWMutex
 }

@@ -90,7 +90,20 @@ func NewGridCoordinator(deps GridCoordinatorDeps) *GridCoordinator {
 func (c *GridCoordinator) Start(ctx context.Context) error {
 	c.logger.Info("Starting Grid Coordinator", "symbol", c.symbol)
 
-	// 1. Restore Local State (Warm Boot)
+	// 1. Start Monitors
+	if c.regimeMonitor != nil {
+		if err := c.regimeMonitor.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start regime monitor: %w", err)
+		}
+	}
+
+	if c.monitor != nil {
+		if err := c.monitor.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start risk monitor: %w", err)
+		}
+	}
+
+	// 2. Restore Local State (Warm Boot)
 	state, err := c.store.LoadState(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load state from store: %w", err)
@@ -105,7 +118,7 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice, "risk_triggered", c.isRiskTriggered)
 	}
 
-	// 2. Exchange Reconciliation (The Reality Check)
+	// 3. Exchange Reconciliation (The Reality Check)
 	if c.exchange != nil {
 		c.logger.Info("Reconciling with exchange...")
 
@@ -145,12 +158,6 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 		c.logger.Info("Exchange reconciliation complete", "open_orders", len(openOrders))
 
 		c.slotManager.RestoreFromExchangePosition(totalPos)
-	}
-
-	if c.regimeMonitor != nil {
-		if err := c.regimeMonitor.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start regime monitor: %w", err)
-		}
 	}
 
 	return nil
@@ -226,6 +233,9 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 
 	if len(strategyActions) > 0 {
 		c.slotManager.MarkSlotsPending(strategyActions)
+	}
+	if len(riskActions) > 0 {
+		c.slotManager.MarkSlotsPending(riskActions)
 	}
 
 	c.mu.Unlock()

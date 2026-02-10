@@ -326,3 +326,56 @@ func BenchmarkCalculateAdjustments(b *testing.B) {
 		_, _ = pm.CalculateAdjustments(context.Background(), price)
 	}
 }
+
+func TestSuperPositionManager_CalculateAdjustments_Race(t *testing.T) {
+	logger := &mockLogger{}
+	rm := &mockRiskMonitor{}
+	symbol := "BTCUSDT"
+	pm := createTestPM(symbol, 1.0, 30.0, 5.0, 10, 10, 2, 3, rm, logger)
+
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	done := make(chan bool)
+
+	// Goroutine 1: Continuously calculate adjustments with varying prices to trigger new slot creation
+	go func() {
+		price := decimal.NewFromFloat(45000.0)
+		for {
+			select {
+			case <-ctx.Done():
+				done <- true
+				return
+			default:
+				_, _ = pm.CalculateAdjustments(ctx, price)
+				price = price.Add(decimal.NewFromFloat(1.0))
+				if price.GreaterThan(decimal.NewFromFloat(45100.0)) {
+					price = decimal.NewFromFloat(45000.0)
+				}
+			}
+		}
+	}()
+
+	// Goroutine 2: Also continuously calculate adjustments
+	go func() {
+		price := decimal.NewFromFloat(44000.0)
+		for {
+			select {
+			case <-ctx.Done():
+				done <- true
+				return
+			default:
+				_, _ = pm.CalculateAdjustments(ctx, price)
+				price = price.Add(decimal.NewFromFloat(1.0))
+				if price.GreaterThan(decimal.NewFromFloat(44100.0)) {
+					price = decimal.NewFromFloat(44000.0)
+				}
+			}
+		}
+	}()
+
+	<-done
+	<-done
+}

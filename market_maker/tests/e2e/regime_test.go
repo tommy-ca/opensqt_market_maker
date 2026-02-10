@@ -81,7 +81,7 @@ func TestE2E_RegimeFiltering(t *testing.T) {
 	}, 1*time.Second, 10*time.Millisecond, "Should have buy and sell orders in Range")
 
 	// SCENARIO 2: BULL TREND (Sells disabled for opening)
-	exch.CancelAllOrders(ctx, "BTCUSDT", false)
+	_ = exch.CancelAllOrders(ctx, "BTCUSDT", false)
 	openOrders, _ := exch.GetOpenOrders(ctx, "BTCUSDT", false)
 	sm.SyncOrders(openOrders, decimal.Zero)
 
@@ -111,7 +111,7 @@ func TestE2E_RegimeFiltering(t *testing.T) {
 	}, 1*time.Second, 10*time.Millisecond, "Should have buy orders and NOT have sell orders in Bull Trend")
 
 	// SCENARIO 3: BEAR TREND (Buys disabled for opening)
-	exch.CancelAllOrders(ctx, "BTCUSDT", false)
+	_ = exch.CancelAllOrders(ctx, "BTCUSDT", false)
 	openOrders, _ = exch.GetOpenOrders(ctx, "BTCUSDT", false)
 	sm.SyncOrders(openOrders, decimal.Zero)
 

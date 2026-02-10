@@ -323,14 +323,19 @@ func (m *SlotManager) MarkSlotsPending(actions []*pb.OrderAction) {
 	defer m.mu.Unlock()
 
 	for _, action := range actions {
-		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+		// Both Places and Cancels should mark slots as PENDING to prevent double-execution
+		// during rapid price updates.
+		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE &&
+			action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL {
 			continue
 		}
 		priceVal := pbu.ToGoDecimal(action.Price)
 		slot := m.getOrCreateSlotLocked(priceVal)
 
 		slot.Mu.Lock()
-		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
+		// Mark as PENDING if currently FREE (for PLACE) or LOCKED (for CANCEL)
+		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE ||
+			slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED {
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
 		}
 		slot.Mu.Unlock()

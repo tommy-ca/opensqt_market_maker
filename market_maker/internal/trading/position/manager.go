@@ -278,8 +278,10 @@ func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decim
 
 		slot := spm.getOrCreateSlotLocked(price)
 
+		slot.Mu.Lock()
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 		slot.PositionQty = pbu.FromGoDecimal(slotQty)
+		slot.PositionQtyDec = slotQty
 
 		slot.OrderId = 0
 		slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
@@ -287,6 +289,7 @@ func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decim
 		slot.ClientOid = ""
 		slot.OrderFilledQty = pbu.FromGoDecimal(decimal.Zero)
 		slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+		slot.Mu.Unlock()
 
 		allocatedQty = allocatedQty.Add(slotQty)
 	}
@@ -300,7 +303,11 @@ func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPr
 
 	spm.mu.RLock()
 	anchorPrice := spm.anchorPrice
-	mgrSlots := spm.slots
+	// Create a snapshot of slot pointers to avoid map race during iteration
+	mgrSlots := make([]*core.InventorySlot, 0, len(spm.slots))
+	for _, s := range spm.slots {
+		mgrSlots = append(mgrSlots, s)
+	}
 	spm.mu.RUnlock()
 
 	// Convert to strategy slots
@@ -308,12 +315,12 @@ func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPr
 	for _, s := range mgrSlots {
 		s.Mu.RLock()
 		stratSlots = append(stratSlots, grid.Slot{
-			Price:          pbu.ToGoDecimal(s.Price),
+			Price:          s.PriceDec,
 			PositionStatus: s.PositionStatus,
-			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
+			PositionQty:    s.PositionQtyDec,
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
-			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
+			OrderPrice:     s.OrderPriceDec,
 			OrderId:        s.OrderId,
 		})
 		s.Mu.RUnlock()
@@ -381,6 +388,9 @@ func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionRe
 			slot.OrderStatus = res.Order.Status
 			slot.OriginalQty = res.Order.Quantity
 			spm.orderMap[res.Order.OrderId] = slot
+			if res.Order.ClientOrderId != "" {
+				spm.clientOMap[res.Order.ClientOrderId] = slot
+			}
 		}
 		slot.Mu.Unlock()
 	}
@@ -439,7 +449,7 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 			slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
 			slot.PositionQtyDec = decimal.Zero
 		}
-		spm.resetSlotNoLock(slot)
+		spm.resetSlotLocked(slot)
 
 		spm.notifyUpdate(&pb.PositionUpdate{
 			UpdateType: "filled",
@@ -449,13 +459,15 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 			},
 		})
 	} else if update.Status == pb.OrderStatus_ORDER_STATUS_CANCELED {
-		spm.resetSlotNoLock(slot)
+		spm.resetSlotLocked(slot)
 	}
 
 	return nil
 }
 
-func (spm *SuperPositionManager) resetSlotNoLock(slot *core.InventorySlot) {
+func (spm *SuperPositionManager) resetSlotLocked(slot *core.InventorySlot) {
+	// NOTE: spm.mu and slot.Mu MUST be held by caller.
+	// We follow the hierarchy: Manager -> Slot
 	delete(spm.orderMap, slot.OrderId)
 	if slot.ClientOid != "" {
 		delete(spm.clientOMap, slot.ClientOid)
@@ -599,9 +611,11 @@ func (spm *SuperPositionManager) ForceSync(ctx context.Context, symbol string, e
 	// 1. Calculate current local size
 	localSize := decimal.Zero
 	for _, s := range spm.slots {
+		s.Mu.RLock()
 		if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			localSize = localSize.Add(pbu.ToGoDecimal(s.PositionQty))
+			localSize = localSize.Add(s.PositionQtyDec)
 		}
+		s.Mu.RUnlock()
 	}
 
 	if localSize.Equal(exchangeSize) {
@@ -613,8 +627,11 @@ func (spm *SuperPositionManager) ForceSync(ctx context.Context, symbol string, e
 	// For now, let's just use the RestoreFromExchangePosition logic.
 	// But first, clear all filled slots.
 	for _, s := range spm.slots {
+		s.Mu.Lock()
 		s.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
 		s.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+		s.PositionQtyDec = decimal.Zero
+		s.Mu.Unlock()
 	}
 
 	spm.mu.Unlock() // RestoreFromExchangePosition will re-lock

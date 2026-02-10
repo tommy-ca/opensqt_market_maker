@@ -170,6 +170,12 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 
 	// Assert: GridEngine.GetSlots() should show the slot as NO LONGER LOCKED
 	assert.NotEqual(t, pb.SlotStatus_SLOT_STATUS_LOCKED, filledSlot.SlotStatus, "Slot should not be LOCKED after offline fill and sync")
+	assert.Equal(t, pb.PositionStatus_POSITION_STATUS_FILLED, filledSlot.PositionStatus, "Slot should be FILLED")
+
+	// Critical Fix Verification: PositionQty should be the order quantity (1.0), not the price (99.0)
+	actualQty := pbu.ToGoDecimal(filledSlot.PositionQty)
+	expectedQty := decimal.NewFromInt(1)
+	assert.True(t, actualQty.Equal(expectedQty), "PositionQty should be %v, got %v", expectedQty, actualQty)
 }
 
 func TestE2E_HardCrash_OfflineFill(t *testing.T) {
