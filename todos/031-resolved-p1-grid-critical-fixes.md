@@ -1,5 +1,5 @@
 ---
-status: pending
+status: resolved
 priority: p1
 issue_id: "031"
 tags: [concurrency, data-integrity, trading]
@@ -12,11 +12,11 @@ dependencies: []
 The Grid Trading Workflow Hardening (PR #15) has introduced critical concurrency and data integrity bugs that risk system panics and financial loss (via inventory corruption).
 
 ## Findings
-1.  **🔴 Deadlock in SuperPositionManager**: (Fixed in commit 6bf4104)
-2.  **🔴 Concurrent Map Access**: (Fixed in commit 6bf4104)
-3.  **✅ Ghost Fill Corruption**: Fixed. Using `OriginalQty` instead of `OrderPrice`.
-4.  **🔴 Double-Execution Race**: (Fixed in commit 6bf4104)
-5.  **🔴 Dead RegimeMonitor**: `rm.Start(ctx)` is never called, rendering the regime filtering feature non-functional.
+1.  **✅ Deadlock in SuperPositionManager**: Fixed by establishing consistent Manager -> Slot hierarchy.
+2.  **✅ Concurrent Map Access**: Fixed by holding RLock during strategy slot conversion and snapshotting.
+3.  **✅ Ghost Fill Corruption**: Fixed. Using `OriginalQty` instead of `OrderPrice` in reconciler.
+4.  **✅ Double-Execution Race**: Fixed by calling `MarkSlotsPending` while locked in `OnPriceUpdate`.
+5.  **✅ Dead RegimeMonitor**: Fixed by calling `rm.Start(ctx)` and `monitor.Start(ctx)` in `GridCoordinator.Start()`.
 
 ## Proposed Solutions
 1.  **Fix Deadlock**: Establish a consistent `Manager -> Slot` lock hierarchy. Refactor `resetSlotLocked` to operate under the manager lock.
@@ -31,8 +31,8 @@ Implement all P1 fixes immediately.
 ## Acceptance Criteria
   - [x] `go test -race ./...` passes.
   - [x] E2E recovery test asserts correct `PositionQty`.
-  - [ ] `RegimeMonitor` log confirmation of Kline subscription.
-
+  - [x] `RegimeMonitor` log confirmation of Kline subscription.
 
 ## Work Log
 - 2026-02-09: Findings consolidated from multiple agents.
+- 2026-02-10: All P1 fixes implemented and verified with race detector and E2E tests.

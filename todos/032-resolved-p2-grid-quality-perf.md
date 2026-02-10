@@ -1,5 +1,5 @@
 ---
-status: pending
+status: resolved
 priority: p2
 issue_id: "032"
 tags: [performance, quality, exchange]
@@ -12,12 +12,12 @@ dependencies: ["031"]
 Various performance bottlenecks and quality gaps identified in the Grid Trading workflow hardening that impact scalability and maintainability.
 
 ## Findings
-1.  **🟡 Inefficient Hot Path**: `OnPriceUpdate` performs O(N) sequential slot locking and conversion on every tick.
-2.  **🟡 Binance Futures Sync Gap**: `GetOpenOrders` is a stub for Binance Futures, which will break reconciliation on boot for those accounts.
-3.  **🟡 Swallowed Errors**: Critical errors from `json.Unmarshal` and stream `Send` calls are ignored with `_ =`.
-4.  **🟡 Persistence Throttling Bypass**: State is saved on every action, potentially causing I/O saturation in volatile markets.
-5.  **🔵 Secret Redaction Gap**: `Secret` type lacks `GoString()`, risking raw leaks in `%#v` logs.
-6.  **🔵 Test Flakiness**: `regime_test.go` uses `time.Sleep` instead of `Eventually`.
+1.  **✅ Optimized Hot Path**: `OnPriceUpdate` now uses batch slot collection with zero-allocation via pre-allocated slices and cached decimals.
+2.  **✅ Binance Futures Sync**: Fully implemented `GetOpenOrders`, `GetPositions`, and `FetchExchangeInfo` for Binance Futures (including PAPI support).
+3.  **✅ Error Audit**: Replaced all `_ =` swallowed errors in exchange connectors with explicit logging.
+4.  **✅ Persistence Throttling**: Implemented 500ms cooldown for state persistence in `GridCoordinator`.
+5.  **✅ Secret Redaction**: Implemented `GoString()` for `Secret` type to prevent leaks in logs.
+6.  **✅ Robust Tests**: Replaced flaky sleeps and fixed setup panics in `regime_test.go`.
 
 ## Proposed Solutions
 1.  **Optimize Hot Path**: Cache decimal values in slots; use pre-allocated slices for strategy input.
@@ -31,9 +31,10 @@ Various performance bottlenecks and quality gaps identified in the Grid Trading 
 Implement P2/P3 improvements after P1 bugs are resolved.
 
 ## Acceptance Criteria
-- [ ] No `_ =` on critical networking or unmarshaling calls.
-- [ ] Binance Futures boot sync verified with logs.
-- [ ] O(1) order lookups confirmed in `OnOrderUpdate`.
+- [x] No `_ =` on critical networking or unmarshaling calls.
+- [x] Binance Futures boot sync verified with logs.
+- [x] O(1) order lookups confirmed in `OnOrderUpdate`.
 
 ## Work Log
 - 2026-02-09: Findings consolidated.
+- 2026-02-10: All P2 enhancements implemented and verified.

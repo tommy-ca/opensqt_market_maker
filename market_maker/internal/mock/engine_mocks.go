@@ -178,6 +178,33 @@ func (m *MockPositionManager) GetSlots() map[string]*core.InventorySlot {
 	return m.slots
 }
 
+func (m *MockPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	num := len(m.slots)
+	if cap(target) < num {
+		target = make([]core.StrategySlot, num)
+	} else {
+		target = target[:num]
+	}
+
+	i := 0
+	for _, s := range m.slots {
+		target[i] = core.StrategySlot{
+			Price:          s.PriceDec,
+			PositionStatus: s.PositionStatus,
+			PositionQty:    s.PositionQtyDec,
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     s.OrderPriceDec,
+			OrderId:        s.OrderId,
+		}
+		i++
+	}
+	return target
+}
+
 func (m *MockPositionManager) GetSlotCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

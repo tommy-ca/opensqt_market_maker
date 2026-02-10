@@ -1,6 +1,7 @@
 package grid
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"testing"
@@ -25,7 +26,7 @@ func TestGridStrategy_CalculateActions_Neutral(t *testing.T) {
 
 	anchorPrice := decimal.NewFromFloat(45000.0)
 	currentPrice := decimal.NewFromFloat(45000.0)
-	levels := []Slot{}
+	levels := []core.StrategySlot{}
 
 	// Test 1: Initial state (should have 2 Buy and 2 Sell orders)
 	actions := strat.CalculateActions(currentPrice, anchorPrice, decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, levels)
@@ -61,7 +62,7 @@ func TestGridStrategy_WithRiskTriggered(t *testing.T) {
 	strat := NewStrategy(cfg)
 
 	// When risk is triggered, we want no opening BUY orders. Sells are allowed (e.g. to reduce inventory or short).
-	actions := strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, pb.MarketRegime_MARKET_REGIME_RANGE, []Slot{})
+	actions := strat.CalculateActions(decimal.NewFromFloat(45000.0), decimal.NewFromFloat(45000.0), decimal.Zero, 0, true, pb.MarketRegime_MARKET_REGIME_RANGE, []core.StrategySlot{})
 
 	// Should have Sells but NO Buys
 	for _, a := range actions {
@@ -71,7 +72,7 @@ func TestGridStrategy_WithRiskTriggered(t *testing.T) {
 	}
 
 	// But if we have an existing position, we should still have a closing order
-	levels := []Slot{
+	levels := []core.StrategySlot{
 		{
 			Price:          decimal.NewFromFloat(44990.0),
 			PositionStatus: pb.PositionStatus_POSITION_STATUS_FILLED,

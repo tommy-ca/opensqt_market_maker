@@ -1,6 +1,7 @@
 package grid
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"testing"
@@ -29,7 +30,7 @@ func TestGridStrategy_DynamicInterval(t *testing.T) {
 
 	// Case 1: Low Volatility (ATR = 5.0) -> Should use Base Interval (10.0)
 	// Because Max(10, 5*1) = 10
-	actions := strat.CalculateActions(current, anchor, decimal.NewFromFloat(5.0), 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, []Slot{})
+	actions := strat.CalculateActions(current, anchor, decimal.NewFromFloat(5.0), 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, []core.StrategySlot{})
 
 	// Expect Buy order at Anchor - Interval = 50000 - 10 = 49990
 	found49990 := false
@@ -42,7 +43,7 @@ func TestGridStrategy_DynamicInterval(t *testing.T) {
 
 	// Case 2: High Volatility (ATR = 50.0) -> Should use ATR based Interval (50.0)
 	// Max(10, 50*1) = 50
-	actions = strat.CalculateActions(current, anchor, decimal.NewFromFloat(50.0), 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, []Slot{})
+	actions = strat.CalculateActions(current, anchor, decimal.NewFromFloat(50.0), 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, []core.StrategySlot{})
 
 	// Expect Buy order at Anchor - 50 = 49950
 	found49950 := false

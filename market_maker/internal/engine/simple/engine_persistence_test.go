@@ -61,6 +61,9 @@ func (m *MockPositionManagerForRollback) GetSlots() map[string]*core.InventorySl
 	args := m.Called()
 	return args.Get(0).(map[string]*core.InventorySlot)
 }
+func (m *MockPositionManagerForRollback) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	return nil
+}
 func (m *MockPositionManagerForRollback) GetSlotCount() int { return 0 }
 func (m *MockPositionManagerForRollback) GetSnapshot() *pb.PositionManagerSnapshot {
 	args := m.Called()

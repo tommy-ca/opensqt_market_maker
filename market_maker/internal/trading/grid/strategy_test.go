@@ -1,6 +1,7 @@
 package grid_test
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/internal/trading/grid"
 	"testing"
@@ -30,11 +31,11 @@ func TestStrategy_CalculateActions(t *testing.T) {
 	// Initial state: No slots
 	// New logic auto-generates orders for active window (Size 2)
 	// Price 100, Interval 10. Buy [90, 80], Sell [110, 120]
-	slots := []grid.Slot{}
+	slots := []core.StrategySlot{}
 	actions := strat.CalculateActions(currentPrice, anchorPrice, atr, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, slots)
 	assert.Len(t, actions, 4)
 
-	slots = []grid.Slot{
+	slots = []core.StrategySlot{
 		{Price: decimal.NewFromInt(90), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE, PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY},
 		{Price: decimal.NewFromInt(110), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE, PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY},
 	}
@@ -64,7 +65,7 @@ func TestStrategy_RiskTriggeredCancelsLockedBuys(t *testing.T) {
 	}
 
 	strat := grid.NewStrategy(cfg)
-	lockedBuy := grid.Slot{
+	lockedBuy := core.StrategySlot{
 		Price:          decimal.NewFromInt(9800),
 		SlotStatus:     pb.SlotStatus_SLOT_STATUS_LOCKED,
 		OrderSide:      pb.OrderSide_ORDER_SIDE_BUY,
@@ -79,7 +80,7 @@ func TestStrategy_RiskTriggeredCancelsLockedBuys(t *testing.T) {
 		1.0,                       // volatilityFactor
 		true,                      // isRiskTriggered
 		pb.MarketRegime_MARKET_REGIME_RANGE,
-		[]grid.Slot{lockedBuy},
+		[]core.StrategySlot{lockedBuy},
 	)
 
 	foundCancel := false

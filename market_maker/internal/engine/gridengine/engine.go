@@ -129,7 +129,7 @@ func (e *GridEngine) Execute(ctx context.Context, actions []*pb.OrderAction) {
 }
 
 func (e *GridEngine) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
-	return e.slotManager.OnOrderUpdate(ctx, update)
+	return e.coordinator.OnOrderUpdate(ctx, update)
 }
 
 func (e *GridEngine) OnFundingUpdate(ctx context.Context, update *pb.FundingUpdate) error {

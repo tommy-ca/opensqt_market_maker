@@ -703,6 +703,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal order message", "error", err)
 			return
 		}
 
@@ -726,6 +727,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 			Left       int64  `json:"left"`
 		}
 		if err := json.Unmarshal(event.Result, &orders); err != nil {
+			e.Logger.Error("Failed to unmarshal orders result", "error", err)
 			return
 		}
 
@@ -795,7 +797,9 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 				"SIGN":   signature,
 			},
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send order stream subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -831,6 +835,7 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -846,6 +851,7 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 			Last     string `json:"last"`
 		}
 		if err := json.Unmarshal(event.Result, &tickers); err != nil {
+			e.Logger.Error("Failed to unmarshal tickers result", "error", err)
 			return
 		}
 
@@ -875,7 +881,9 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 			"event":   "subscribe",
 			"payload": gateSymbols,
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send tickers subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -906,6 +914,7 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			Result  json.RawMessage `json:"result"`
 		}
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal kline message", "error", err)
 			return
 		}
 
@@ -923,6 +932,7 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			N string `json:"n"` // Name: 1m_BTC_USDT
 		}
 		if err := json.Unmarshal(event.Result, &raw); err != nil {
+			e.Logger.Error("Failed to unmarshal kline result", "error", err)
 			return
 		}
 
@@ -962,7 +972,9 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			"event":   "subscribe",
 			"payload": payload,
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send kline subscription", "error", err)
+		}
 	})
 
 	go func() {

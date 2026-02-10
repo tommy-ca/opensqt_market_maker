@@ -154,10 +154,11 @@ func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
 				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
-			PriceDec:       roundedPrice,
-			OrderPriceDec:  decimal.Zero,
-			PositionQtyDec: decimal.Zero,
-			OriginalQtyDec: theoryQty,
+			PriceDec:          roundedPrice,
+			OrderPriceDec:     decimal.Zero,
+			PositionQtyDec:    decimal.Zero,
+			OriginalQtyDec:    theoryQty,
+			OrderFilledQtyDec: decimal.Zero,
 		}
 		spm.slots[roundedPrice.String()] = slot
 		atomic.AddInt64(&spm.totalSlots, 1)
@@ -176,10 +177,11 @@ func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
 				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
-			PriceDec:       roundedPrice,
-			OrderPriceDec:  decimal.Zero,
-			PositionQtyDec: decimal.Zero,
-			OriginalQtyDec: theoryQty,
+			PriceDec:          roundedPrice,
+			OrderPriceDec:     decimal.Zero,
+			PositionQtyDec:    decimal.Zero,
+			OriginalQtyDec:    theoryQty,
+			OrderFilledQtyDec: decimal.Zero,
 		}
 		spm.slots[roundedPrice.String()] = slot
 		atomic.AddInt64(&spm.totalSlots, 1)
@@ -199,11 +201,12 @@ func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot
 	var totalSlots int64
 	for k, s := range slots {
 		newSlot := &core.InventorySlot{
-			InventorySlot:  s,
-			PriceDec:       pbu.ToGoDecimal(s.Price),
-			OrderPriceDec:  pbu.ToGoDecimal(s.OrderPrice),
-			PositionQtyDec: pbu.ToGoDecimal(s.PositionQty),
-			OriginalQtyDec: pbu.ToGoDecimal(s.OriginalQty),
+			InventorySlot:     s,
+			PriceDec:          pbu.ToGoDecimal(s.Price),
+			OrderPriceDec:     pbu.ToGoDecimal(s.OrderPrice),
+			PositionQtyDec:    pbu.ToGoDecimal(s.PositionQty),
+			OriginalQtyDec:    pbu.ToGoDecimal(s.OriginalQty),
+			OrderFilledQtyDec: pbu.ToGoDecimal(s.OrderFilledQty),
 		}
 		spm.slots[k] = newSlot
 		if newSlot.OrderId != 0 {
@@ -301,30 +304,12 @@ func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPr
 		return nil, fmt.Errorf("strategy not set")
 	}
 
+	// Use optimized slot collection
+	stratSlots := spm.GetStrategySlots(nil)
+
 	spm.mu.RLock()
 	anchorPrice := spm.anchorPrice
-	// Create a snapshot of slot pointers to avoid map race during iteration
-	mgrSlots := make([]*core.InventorySlot, 0, len(spm.slots))
-	for _, s := range spm.slots {
-		mgrSlots = append(mgrSlots, s)
-	}
 	spm.mu.RUnlock()
-
-	// Convert to strategy slots
-	stratSlots := make([]grid.Slot, 0, len(mgrSlots))
-	for _, s := range mgrSlots {
-		s.Mu.RLock()
-		stratSlots = append(stratSlots, grid.Slot{
-			Price:          s.PriceDec,
-			PositionStatus: s.PositionStatus,
-			PositionQty:    s.PositionQtyDec,
-			SlotStatus:     s.SlotStatus,
-			OrderSide:      s.OrderSide,
-			OrderPrice:     s.OrderPriceDec,
-			OrderId:        s.OrderId,
-		})
-		s.Mu.RUnlock()
-	}
 
 	atr := decimal.Zero
 	volFactor := 0.0
@@ -431,11 +416,12 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 	// 2. Slot-level Idempotency Check for partial fills
 	if update.Status == pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
 		newExecuted := pbu.ToGoDecimal(update.ExecutedQty)
-		oldExecuted := pbu.ToGoDecimal(slot.OrderFilledQty)
+		oldExecuted := slot.OrderFilledQtyDec
 		if newExecuted.LessThanOrEqual(oldExecuted) {
 			return nil // Duplicate or stale partial fill
 		}
 		slot.OrderFilledQty = update.ExecutedQty
+		slot.OrderFilledQtyDec = newExecuted
 		return nil
 	}
 
@@ -444,10 +430,12 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 			slot.PositionQty = update.ExecutedQty
 			slot.PositionQtyDec = pbu.ToGoDecimal(update.ExecutedQty)
+			slot.OrderFilledQtyDec = slot.PositionQtyDec
 		} else {
 			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
 			slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
 			slot.PositionQtyDec = decimal.Zero
+			slot.OrderFilledQtyDec = decimal.Zero
 		}
 		spm.resetSlotLocked(slot)
 
@@ -488,6 +476,32 @@ func (spm *SuperPositionManager) GetSlots() map[string]*core.InventorySlot {
 		res[k] = v
 	}
 	return res
+}
+
+func (spm *SuperPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+
+	if cap(target) < len(spm.slots) {
+		target = make([]core.StrategySlot, 0, len(spm.slots))
+	} else {
+		target = target[:0]
+	}
+
+	for _, s := range spm.slots {
+		s.Mu.RLock()
+		target = append(target, core.StrategySlot{
+			Price:          s.PriceDec,
+			PositionStatus: s.PositionStatus,
+			PositionQty:    s.PositionQtyDec,
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     s.OrderPriceDec,
+			OrderId:        s.OrderId,
+		})
+		s.Mu.RUnlock()
+	}
+	return target
 }
 
 func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {

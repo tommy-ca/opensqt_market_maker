@@ -934,6 +934,7 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal order message", "error", err)
 			return
 		}
 
@@ -995,7 +996,9 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		_ = client.Send(authMsg)
+		if err := client.Send(authMsg); err != nil {
+			e.Logger.Error("Failed to send auth message", "error", err)
+		}
 
 		// Subscribe
 		go func() {
@@ -1007,7 +1010,9 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 					"position",
 				},
 			}
-			_ = client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send subscription message", "error", err)
+			}
 		}()
 	})
 
@@ -1046,6 +1051,7 @@ func (e *BybitExchange) StartPriceStream(ctx context.Context, symbols []string, 
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -1074,7 +1080,9 @@ func (e *BybitExchange) StartPriceStream(ctx context.Context, symbols []string, 
 			"op":   "subscribe",
 			"args": args,
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -1280,6 +1288,7 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal account message", "error", err)
 			return
 		}
 
@@ -1331,7 +1340,9 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		_ = client.Send(authMsg)
+		if err := client.Send(authMsg); err != nil {
+			e.Logger.Error("Failed to send auth message", "error", err)
+		}
 
 		// Subscribe
 		go func() {
@@ -1340,7 +1351,9 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 				"op":   "subscribe",
 				"args": []string{"wallet"},
 			}
-			_ = client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send wallet subscription message", "error", err)
+			}
 		}()
 	})
 

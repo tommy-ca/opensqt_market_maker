@@ -30,8 +30,5 @@ func (s Secret) GormValue(ctx interface{}, db interface{}) interface{} {
 
 // GoString ensures secrets are redacted when using %#v format
 func (s Secret) GoString() string {
-	if s == "" {
-		return `""`
-	}
-	return `"[REDACTED]"`
+	return "[REDACTED]"
 }

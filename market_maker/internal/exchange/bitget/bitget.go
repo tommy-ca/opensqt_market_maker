@@ -847,6 +847,7 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -906,7 +907,9 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 				},
 			},
 		}
-		_ = client.Send(loginMsg)
+		if err := client.Send(loginMsg); err != nil {
+			e.Logger.Error("Failed to send login message", "error", err)
+		}
 
 		go func() {
 			time.Sleep(100 * time.Millisecond)
@@ -920,7 +923,9 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 					},
 				},
 			}
-			_ = client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send orders subscription message", "error", err)
+			}
 		}()
 	})
 
@@ -975,6 +980,7 @@ func (e *BitgetExchange) StartPriceStream(ctx context.Context, symbols []string,
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -1020,7 +1026,9 @@ func (e *BitgetExchange) StartPriceStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send tickers subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -1054,6 +1062,7 @@ func (e *BitgetExchange) StartKlineStream(ctx context.Context, symbols []string,
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal kline message", "error", err)
 			return
 		}
 
@@ -1099,7 +1108,9 @@ func (e *BitgetExchange) StartKlineStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		_ = client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send kline subscription", "error", err)
+		}
 	})
 
 	go func() {

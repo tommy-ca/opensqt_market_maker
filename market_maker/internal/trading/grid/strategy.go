@@ -1,23 +1,13 @@
 package grid
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/tradingutils"
 
 	"github.com/shopspring/decimal"
 )
-
-// Slot represents the data required by the strategy logic for a single grid level
-type Slot struct {
-	Price          decimal.Decimal
-	PositionStatus pb.PositionStatus
-	PositionQty    decimal.Decimal
-	SlotStatus     pb.SlotStatus
-	OrderSide      pb.OrderSide
-	OrderPrice     decimal.Decimal
-	OrderId        int64
-}
 
 // StrategyConfig holds the parameters for the grid strategy
 type StrategyConfig struct {
@@ -84,7 +74,7 @@ func (s *Strategy) CalculateActions(
 	volatilityFactor float64,
 	isRiskTriggered bool,
 	regime pb.MarketRegime,
-	slots []Slot,
+	slots []core.StrategySlot,
 ) []*pb.OrderAction {
 	interval := s.CalculateEffectiveInterval(atr)
 
@@ -167,7 +157,7 @@ func (s *Strategy) CalculateActions(
 	return actions
 }
 
-func (s *Strategy) calculateInventory(slots []Slot) decimal.Decimal {
+func (s *Strategy) calculateInventory(slots []core.StrategySlot) decimal.Decimal {
 	total := decimal.Zero
 	for _, slot := range slots {
 		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
@@ -197,7 +187,7 @@ func (s *Strategy) toMap(prices []decimal.Decimal) map[string]bool {
 }
 
 func (s *Strategy) decideActionForSlot(
-	slot Slot,
+	slot core.StrategySlot,
 	currentPrice decimal.Decimal,
 	interval decimal.Decimal,
 	volatilityFactor float64,

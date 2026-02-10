@@ -10,16 +10,28 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// StrategySlot represents the data required by the strategy logic for a single grid level
+type StrategySlot struct {
+	Price          decimal.Decimal
+	PositionStatus pb.PositionStatus
+	PositionQty    decimal.Decimal
+	SlotStatus     pb.SlotStatus
+	OrderSide      pb.OrderSide
+	OrderPrice     decimal.Decimal
+	OrderId        int64
+}
+
 // InventorySlot wraps the generated pb.InventorySlot with a mutex for runtime safety
 type InventorySlot struct {
 	*pb.InventorySlot
 	Mu sync.RWMutex `json:"-"`
 
 	// Cached decimal versions for hot path optimization
-	PriceDec       decimal.Decimal `json:"-"`
-	OrderPriceDec  decimal.Decimal `json:"-"`
-	PositionQtyDec decimal.Decimal `json:"-"`
-	OriginalQtyDec decimal.Decimal `json:"-"`
+	PriceDec          decimal.Decimal `json:"-"`
+	OrderPriceDec     decimal.Decimal `json:"-"`
+	PositionQtyDec    decimal.Decimal `json:"-"`
+	OriginalQtyDec    decimal.Decimal `json:"-"`
+	OrderFilledQtyDec decimal.Decimal `json:"-"`
 }
 
 // OrderActionResult represents the result of applying an OrderAction
@@ -116,6 +128,7 @@ type IPositionManager interface {
 	CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	CancelAllSellOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	GetSlots() map[string]*InventorySlot
+	GetStrategySlots(target []StrategySlot) []StrategySlot
 	GetSlotCount() int
 	GetSnapshot() *pb.PositionManagerSnapshot
 	CreateReconciliationSnapshot() map[string]*InventorySlot

@@ -132,7 +132,10 @@ func (m *MockPositionManager) CancelAllSellOrders(ctx context.Context) ([]*pb.Or
 	return nil, nil
 }
 func (m *MockPositionManager) GetSlots() map[string]*core.InventorySlot { return nil }
-func (m *MockPositionManager) GetSlotCount() int                        { return 0 }
+func (m *MockPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	return nil
+}
+func (m *MockPositionManager) GetSlotCount() int { return 0 }
 func (m *MockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	return &pb.PositionManagerSnapshot{Slots: make(map[string]*pb.InventorySlot)}
 }

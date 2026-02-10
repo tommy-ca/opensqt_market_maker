@@ -32,9 +32,12 @@ type GridCoordinator struct {
 	executor      IGridExecutor
 
 	anchorPrice     decimal.Decimal
+	lastPrice       decimal.Decimal
 	isRiskTriggered bool
+	isDirty         bool
 	lastSaveTime    time.Time
-	stratSlots      []grid.Slot
+	saveTimer       *time.Timer
+	stratSlots      []core.StrategySlot
 	mu              sync.Mutex
 }
 
@@ -83,7 +86,9 @@ func NewGridCoordinator(deps GridCoordinatorDeps) *GridCoordinator {
 		store:         deps.Store,
 		logger:        deps.Logger,
 		executor:      deps.Executor,
-		lastSaveTime:  time.Time{},
+		lastPrice:     decimal.Zero,
+		isDirty:       false,
+		lastSaveTime:  time.Time{}, // Allow immediate first save
 	}
 }
 
@@ -114,6 +119,7 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to restore state in slot manager: %w", err)
 		}
 		c.anchorPrice = pbu.ToGoDecimal(state.LastPrice)
+		c.lastPrice = pbu.ToGoDecimal(state.LastPrice)
 		c.isRiskTriggered = state.IsRiskTriggered
 		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice, "risk_triggered", c.isRiskTriggered)
 	}
@@ -198,30 +204,8 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	}
 	c.isRiskTriggered = isTriggeredNow
 
-	// 3. Calculate Strategy Actions
-	mgrSlots := c.slotManager.GetSlots()
-	numSlots := len(mgrSlots)
-	if cap(c.stratSlots) < numSlots {
-		c.stratSlots = make([]grid.Slot, numSlots)
-	} else {
-		c.stratSlots = c.stratSlots[:numSlots]
-	}
-
-	i := 0
-	for _, s := range mgrSlots {
-		s.Mu.RLock()
-		c.stratSlots[i] = grid.Slot{
-			Price:          s.PriceDec,
-			PositionStatus: s.PositionStatus,
-			PositionQty:    s.PositionQtyDec,
-			SlotStatus:     s.SlotStatus,
-			OrderSide:      s.OrderSide,
-			OrderPrice:     s.OrderPriceDec,
-			OrderId:        s.OrderId,
-		}
-		s.Mu.RUnlock()
-		i++
-	}
+	// 3. Optimized Strategy Actions collection
+	c.stratSlots = c.slotManager.GetStrategySlots(c.stratSlots)
 
 	// 4. Get Current Regime
 	currentRegime := pb.MarketRegime_MARKET_REGIME_RANGE
@@ -249,21 +233,58 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	}
 
 	// Phase 3: Persistence
-
 	c.mu.Lock()
-	hasActivity := len(strategyActions) > 0 || len(riskActions) > 0
-	isHeartbeat := time.Since(c.lastSaveTime) > 30*time.Second
-
-	// Throttling: only save if enough time has passed (500ms), unless it's a heartbeat or risk trigger
-	shouldSave := isHeartbeat || len(riskActions) > 0 || (hasActivity && time.Since(c.lastSaveTime) > 500*time.Millisecond)
+	c.lastPrice = pVal
+	if len(strategyActions) > 0 || len(riskActions) > 0 {
+		c.isDirty = true
+	}
 	c.mu.Unlock()
 
-	if shouldSave {
-		if err := c.saveState(ctx, pVal); err != nil {
-			return fmt.Errorf("failed to save state: %w", err)
-		}
+	if err := c.maybeSaveState(ctx, len(riskActions) > 0); err != nil {
+		return err
 	}
 
+	return nil
+}
+
+func (c *GridCoordinator) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
+	if err := c.slotManager.OnOrderUpdate(ctx, update); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.isDirty = true
+	c.mu.Unlock()
+
+	return c.maybeSaveState(ctx, false)
+}
+
+func (c *GridCoordinator) maybeSaveState(ctx context.Context, force bool) error {
+	c.mu.Lock()
+	now := time.Now()
+	isHeartbeat := now.Sub(c.lastSaveTime) > 30*time.Second
+	cooldownExpired := now.Sub(c.lastSaveTime) > 500*time.Millisecond
+
+	if force || isHeartbeat || (c.isDirty && cooldownExpired) {
+		pVal := c.lastPrice
+		c.mu.Unlock()
+		return c.saveState(ctx, pVal)
+	}
+
+	if c.isDirty && c.saveTimer == nil {
+		delay := 500*time.Millisecond - now.Sub(c.lastSaveTime)
+		if delay < 0 {
+			delay = 0
+		}
+		c.saveTimer = time.AfterFunc(delay, func() {
+			c.mu.Lock()
+			pVal := c.lastPrice
+			c.mu.Unlock()
+			_ = c.saveState(context.Background(), pVal)
+		})
+	}
+
+	c.mu.Unlock()
 	return nil
 }
 
@@ -279,7 +300,12 @@ func (c *GridCoordinator) SetStrategyID(id string) {
 
 func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) error {
 	c.mu.Lock()
+	if c.saveTimer != nil {
+		c.saveTimer.Stop()
+		c.saveTimer = nil
+	}
 	c.lastSaveTime = time.Now()
+	c.isDirty = false
 	isRiskTriggered := c.isRiskTriggered
 	c.mu.Unlock()
 

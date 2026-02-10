@@ -108,10 +108,12 @@ func (m *SlotManager) handleFilled(slot *core.InventorySlot, update *pb.OrderUpd
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 		slot.PositionQty = update.ExecutedQty
 		slot.PositionQtyDec = pbu.ToGoDecimal(update.ExecutedQty)
+		slot.OrderFilledQtyDec = slot.PositionQtyDec
 	} else {
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
 		slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
 		slot.PositionQtyDec = decimal.Zero
+		slot.OrderFilledQtyDec = decimal.Zero
 	}
 	m.resetSlotLocked(slot)
 
@@ -162,10 +164,11 @@ func (m *SlotManager) getOrCreateSlotLocked(price decimal.Decimal) *core.Invento
 			PositionQty:    pbu.FromGoDecimal(decimal.Zero),
 			OriginalQty:    pbu.FromGoDecimal(decimal.Zero), // Should be set by caller if needed
 		},
-		PriceDec:       price,
-		OrderPriceDec:  decimal.Zero,
-		PositionQtyDec: decimal.Zero,
-		OriginalQtyDec: decimal.Zero,
+		PriceDec:          price,
+		OrderPriceDec:     decimal.Zero,
+		PositionQtyDec:    decimal.Zero,
+		OriginalQtyDec:    decimal.Zero,
+		OrderFilledQtyDec: decimal.Zero,
 	}
 	m.slots[key] = s
 	atomic.AddInt64(&m.totalSlots, 1)
@@ -195,11 +198,12 @@ func (m *SlotManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 
 	for k, s := range slots {
 		newSlot := &core.InventorySlot{
-			InventorySlot:  s,
-			PriceDec:       pbu.ToGoDecimal(s.Price),
-			OrderPriceDec:  pbu.ToGoDecimal(s.OrderPrice),
-			PositionQtyDec: pbu.ToGoDecimal(s.PositionQty),
-			OriginalQtyDec: pbu.ToGoDecimal(s.OriginalQty),
+			InventorySlot:     s,
+			PriceDec:          pbu.ToGoDecimal(s.Price),
+			OrderPriceDec:     pbu.ToGoDecimal(s.OrderPrice),
+			PositionQtyDec:    pbu.ToGoDecimal(s.PositionQty),
+			OriginalQtyDec:    pbu.ToGoDecimal(s.OriginalQty),
+			OrderFilledQtyDec: pbu.ToGoDecimal(s.OrderFilledQty),
 		}
 		m.slots[k] = newSlot
 		if s.OrderId != 0 {
@@ -211,6 +215,35 @@ func (m *SlotManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	}
 	atomic.StoreInt64(&m.totalSlots, int64(len(slots)))
 	return nil
+}
+
+func (m *SlotManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	num := len(m.slots)
+	if cap(target) < num {
+		target = make([]core.StrategySlot, num)
+	} else {
+		target = target[:num]
+	}
+
+	i := 0
+	for _, s := range m.slots {
+		s.Mu.RLock()
+		target[i] = core.StrategySlot{
+			Price:          s.PriceDec,
+			PositionStatus: s.PositionStatus,
+			PositionQty:    s.PositionQtyDec,
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     s.OrderPriceDec,
+			OrderId:        s.OrderId,
+		}
+		s.Mu.RUnlock()
+		i++
+	}
+	return target
 }
 
 func (m *SlotManager) GetSnapshot() *pb.PositionManagerSnapshot {

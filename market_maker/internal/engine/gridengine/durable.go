@@ -112,7 +112,7 @@ func (e *DBOSGridEngine) ExecuteActionWorkflow(ctx dbos.DBOSContext, input any) 
 }
 
 func (e *DBOSGridEngine) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
-	return e.slotManager.OnOrderUpdate(ctx, update)
+	return e.coordinator.OnOrderUpdate(ctx, update)
 }
 
 func (e *DBOSGridEngine) OnFundingUpdate(ctx context.Context, update *pb.FundingUpdate) error {

@@ -62,6 +62,9 @@ func (m *mockPositionManager) GetSlots() map[string]*core.InventorySlot {
 	}
 	return args.Get(0).(map[string]*core.InventorySlot)
 }
+func (m *mockPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	return nil
+}
 func (m *mockPositionManager) GetSlotCount() int {
 	return len(m.slots)
 }
