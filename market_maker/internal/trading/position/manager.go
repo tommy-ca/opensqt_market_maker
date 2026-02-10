@@ -196,6 +196,12 @@ func (spm *SuperPositionManager) GetAnchorPrice() decimal.Decimal {
 	return spm.anchorPrice
 }
 
+func (spm *SuperPositionManager) SetAnchorPrice(price decimal.Decimal) {
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
+	spm.anchorPrice = price
+}
+
 func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
@@ -449,7 +455,7 @@ func (spm *SuperPositionManager) GetStrategySlots(target []core.StrategySlot) []
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
 			OrderPrice:     s.OrderPriceDec,
-			OrderId:        s.OrderId,
+			OrderID:        s.OrderId,
 		})
 		s.Mu.RUnlock()
 	}

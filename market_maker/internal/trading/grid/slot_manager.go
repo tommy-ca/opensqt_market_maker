@@ -56,6 +56,10 @@ func (m *SlotManager) GetAnchorPrice() decimal.Decimal {
 	return decimal.Zero
 }
 
+func (m *SlotManager) SetAnchorPrice(price decimal.Decimal) {
+	// No-op for now to satisfy interface
+}
+
 // GetSlots returns a snapshot of all slots
 func (m *SlotManager) GetSlots() map[string]*core.InventorySlot {
 	m.mu.RLock()
@@ -342,7 +346,7 @@ func (m *SlotManager) GetStrategySlots(target []core.StrategySlot) []core.Strate
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
 			OrderPrice:     s.OrderPriceDec,
-			OrderId:        s.OrderId,
+			OrderID:        s.OrderId,
 		}
 		s.Mu.RUnlock()
 		i++

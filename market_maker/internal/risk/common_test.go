@@ -33,6 +33,9 @@ func (m *mockPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 func (m *mockPositionManager) GetAnchorPrice() decimal.Decimal {
 	return decimal.Zero
 }
+func (m *mockPositionManager) SetAnchorPrice(price decimal.Decimal) {
+	m.Called(price)
+}
 func (m *mockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	args := m.Called(slots)
 	return args.Error(0)

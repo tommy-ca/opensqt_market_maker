@@ -117,6 +117,7 @@ type MockPositionManager struct {
 
 func (m *MockPositionManager) Initialize(anchorPrice decimal.Decimal) error              { return nil }
 func (m *MockPositionManager) GetAnchorPrice() decimal.Decimal                           { return decimal.Zero }
+func (m *MockPositionManager) SetAnchorPrice(price decimal.Decimal)                      {}
 func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error     { return nil }
 func (m *MockPositionManager) RestoreFromExchangePosition(totalPosition decimal.Decimal) {}
 func (m *MockPositionManager) ApplyActionResults(results []core.OrderActionResult) error { return nil }

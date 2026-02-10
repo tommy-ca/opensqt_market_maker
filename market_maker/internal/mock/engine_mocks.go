@@ -114,6 +114,9 @@ func (m *MockPositionManager) GetAnchorPrice() decimal.Decimal {
 	return decimal.Zero
 }
 
+func (m *MockPositionManager) SetAnchorPrice(price decimal.Decimal) {
+}
+
 func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -211,7 +214,7 @@ func (m *MockPositionManager) GetStrategySlots(target []core.StrategySlot) []cor
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
 			OrderPrice:     s.OrderPriceDec,
-			OrderId:        s.OrderId,
+			OrderID:        s.OrderId,
 		}
 		i++
 	}
