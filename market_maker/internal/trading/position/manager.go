@@ -54,6 +54,10 @@ type SuperPositionManager struct {
 	processedUpdates map[string]time.Time
 	updateMu         sync.RWMutex
 
+	// Callbacks for services
+	updateCallbacks []func(*pb.PositionUpdate)
+	callbackMu      sync.RWMutex
+
 	// Metrics
 	meter metric.Meter
 }
@@ -138,32 +142,46 @@ func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	sellPrices := tradingutils.CalculatePriceLevels(anchorPrice, spm.priceInterval, spm.sellWindowSize)
 
 	for _, price := range buyPrices {
+		roundedPrice := tradingutils.RoundPrice(price, spm.priceDecimals)
+		theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
 		slot := &core.InventorySlot{
 			InventorySlot: &pb.InventorySlot{
-				Price:          pbu.FromGoDecimal(tradingutils.RoundPrice(price, spm.priceDecimals)),
+				Price:          pbu.FromGoDecimal(roundedPrice),
 				PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 				PositionQty:    pbu.FromGoDecimal(decimal.Zero),
 				OrderId:        0, ClientOid: "", OrderSide: pb.OrderSide_ORDER_SIDE_BUY,
 				OrderStatus: pb.OrderStatus_ORDER_STATUS_NEW, OrderPrice: pbu.FromGoDecimal(decimal.Zero),
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
+				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
+			PriceDec:       roundedPrice,
+			OrderPriceDec:  decimal.Zero,
+			PositionQtyDec: decimal.Zero,
+			OriginalQtyDec: theoryQty,
 		}
-		spm.slots[pbu.ToGoDecimal(slot.Price).String()] = slot
+		spm.slots[roundedPrice.String()] = slot
 		atomic.AddInt64(&spm.totalSlots, 1)
 	}
 
 	for _, price := range sellPrices {
+		roundedPrice := tradingutils.RoundPrice(price, spm.priceDecimals)
+		theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
 		slot := &core.InventorySlot{
 			InventorySlot: &pb.InventorySlot{
-				Price:          pbu.FromGoDecimal(tradingutils.RoundPrice(price, spm.priceDecimals)),
+				Price:          pbu.FromGoDecimal(roundedPrice),
 				PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 				PositionQty:    pbu.FromGoDecimal(decimal.Zero),
 				OrderId:        0, ClientOid: "", OrderSide: pb.OrderSide_ORDER_SIDE_SELL,
 				OrderStatus: pb.OrderStatus_ORDER_STATUS_NEW, OrderPrice: pbu.FromGoDecimal(decimal.Zero),
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
+				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
+			PriceDec:       roundedPrice,
+			OrderPriceDec:  decimal.Zero,
+			PositionQtyDec: decimal.Zero,
+			OriginalQtyDec: theoryQty,
 		}
-		spm.slots[pbu.ToGoDecimal(slot.Price).String()] = slot
+		spm.slots[roundedPrice.String()] = slot
 		atomic.AddInt64(&spm.totalSlots, 1)
 	}
 
@@ -181,7 +199,11 @@ func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot
 	var totalSlots int64
 	for k, s := range slots {
 		newSlot := &core.InventorySlot{
-			InventorySlot: s,
+			InventorySlot:  s,
+			PriceDec:       pbu.ToGoDecimal(s.Price),
+			OrderPriceDec:  pbu.ToGoDecimal(s.OrderPrice),
+			PositionQtyDec: pbu.ToGoDecimal(s.PositionQty),
+			OriginalQtyDec: pbu.ToGoDecimal(s.OriginalQty),
 		}
 		spm.slots[k] = newSlot
 		if newSlot.OrderId != 0 {
@@ -355,7 +377,9 @@ func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionRe
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
 			slot.OrderSide = res.Order.Side
 			slot.OrderPrice = res.Order.Price
+			slot.OrderPriceDec = pbu.ToGoDecimal(res.Order.Price)
 			slot.OrderStatus = res.Order.Status
+			slot.OriginalQty = res.Order.Quantity
 			spm.orderMap[res.Order.OrderId] = slot
 		}
 		slot.Mu.Unlock()
@@ -379,12 +403,13 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 		spm.updateMu.Unlock()
 	}
 
-	spm.mu.RLock()
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
+
 	slot, ok := spm.orderMap[update.OrderId]
 	if !ok {
 		slot, ok = spm.clientOMap[update.ClientOrderId]
 	}
-	spm.mu.RUnlock()
 
 	if !ok {
 		return nil
@@ -408,25 +433,33 @@ func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.O
 		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
 			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 			slot.PositionQty = update.ExecutedQty
+			slot.PositionQtyDec = pbu.ToGoDecimal(update.ExecutedQty)
 		} else {
 			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
 			slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+			slot.PositionQtyDec = decimal.Zero
 		}
-		spm.resetSlotLocked(slot)
+		spm.resetSlotNoLock(slot)
+
+		spm.notifyUpdate(&pb.PositionUpdate{
+			UpdateType: "filled",
+			Position: &pb.PositionData{
+				Symbol:   spm.symbol,
+				Quantity: slot.PositionQty,
+			},
+		})
 	} else if update.Status == pb.OrderStatus_ORDER_STATUS_CANCELED {
-		spm.resetSlotLocked(slot)
+		spm.resetSlotNoLock(slot)
 	}
 
 	return nil
 }
 
-func (spm *SuperPositionManager) resetSlotLocked(slot *core.InventorySlot) {
-	spm.mu.Lock()
+func (spm *SuperPositionManager) resetSlotNoLock(slot *core.InventorySlot) {
 	delete(spm.orderMap, slot.OrderId)
 	if slot.ClientOid != "" {
 		delete(spm.clientOMap, slot.ClientOid)
 	}
-	spm.mu.Unlock()
 
 	slot.OrderId = 0
 	slot.ClientOid = ""
@@ -436,7 +469,13 @@ func (spm *SuperPositionManager) resetSlotLocked(slot *core.InventorySlot) {
 func (spm *SuperPositionManager) GetSlots() map[string]*core.InventorySlot {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-	return spm.slots
+
+	// Return a copy of the map to avoid race conditions during iteration
+	res := make(map[string]*core.InventorySlot, len(spm.slots))
+	for k, v := range spm.slots {
+		res[k] = v
+	}
+	return res
 }
 
 func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
@@ -586,6 +625,17 @@ func (spm *SuperPositionManager) ForceSync(ctx context.Context, symbol string, e
 }
 
 func (spm *SuperPositionManager) OnUpdate(callback func(*pb.PositionUpdate)) {
+	spm.callbackMu.Lock()
+	defer spm.callbackMu.Unlock()
+	spm.updateCallbacks = append(spm.updateCallbacks, callback)
+}
+
+func (spm *SuperPositionManager) notifyUpdate(update *pb.PositionUpdate) {
+	spm.callbackMu.RLock()
+	defer spm.callbackMu.RUnlock()
+	for _, cb := range spm.updateCallbacks {
+		go cb(update)
+	}
 }
 
 func (spm *SuperPositionManager) GetFills() []*pb.Fill {
@@ -606,13 +656,19 @@ func (spm *SuperPositionManager) getOrCreateSlotLocked(price decimal.Decimal) *c
 		return s
 	}
 
+	theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
 	s := &core.InventorySlot{
 		InventorySlot: &pb.InventorySlot{
 			Price:          pbu.FromGoDecimal(price),
 			SlotStatus:     pb.SlotStatus_SLOT_STATUS_FREE,
 			PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 			PositionQty:    pbu.FromGoDecimal(decimal.Zero),
+			OriginalQty:    pbu.FromGoDecimal(theoryQty),
 		},
+		PriceDec:       price,
+		OrderPriceDec:  decimal.Zero,
+		PositionQtyDec: decimal.Zero,
+		OriginalQtyDec: theoryQty,
 	}
 	spm.slots[key] = s
 	atomic.AddInt64(&spm.totalSlots, 1)

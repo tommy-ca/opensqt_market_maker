@@ -244,12 +244,15 @@ func (e *ArbitrageEngine) OnFundingUpdate(ctx context.Context, update *pb.Fundin
 	// 3. Reconcile
 	e.isExecuting = true
 	e.mu.Unlock()
-	e.reconcile(ctx, target, update.NextFundingTime)
+	err = e.reconcile(ctx, target, update.NextFundingTime)
 
 	e.mu.Lock()
 	e.isExecuting = false
+	if err == nil {
+		e.lastNextFundingTime = update.NextFundingTime
+	}
 	e.mu.Unlock()
-	return nil
+	return err
 }
 
 func (e *ArbitrageEngine) GetStatus() (*core.TargetState, error) {
@@ -265,7 +268,7 @@ func (e *ArbitrageEngine) GetStatus() (*core.TargetState, error) {
 	}, nil
 }
 
-func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetState, nextFundingTime int64) {
+func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetState, nextFundingTime int64) error {
 	// Simple Delta Reconciliation
 	spotTarget := target.Positions[0].Size
 	spotCurrent := e.legManager.GetSignedSize(e.spotExchange, e.symbol)
@@ -276,7 +279,7 @@ func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetStat
 
 	// Threshold for action (dust check)
 	if delta.Abs().LessThan(decimal.NewFromFloat(0.0001)) {
-		return
+		return nil
 	}
 
 	e.logger.Info("Reconciling", "target", spotTarget, "current", spotCurrent, "delta", delta)
@@ -294,24 +297,24 @@ func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetStat
 			// Let's use the atomic entry logic for new positions
 			if spotCurrent.IsZero() {
 				// New Entry
-				_ = e.executeEntry(ctx, true, nextFundingTime)
+				return e.executeEntry(ctx, true, nextFundingTime)
 			} else {
 				// Partial close logic (TODO: Refactor executeExit/Entry to handle quantity)
 				// For now, if we need to close, we call executeExit which closes everything
-				_ = e.executeExit(ctx, nextFundingTime)
+				return e.executeExit(ctx, nextFundingTime)
 			}
 		} else {
 			// Increasing Long Spot -> Entry Positive
-			_ = e.executeEntry(ctx, true, nextFundingTime)
+			return e.executeEntry(ctx, true, nextFundingTime)
 		}
 	} else {
 		// Selling Spot (Entry Negative or Exit Positive)
 		if spotCurrent.IsPositive() {
 			// Closing Long Spot -> Exit Positive
-			_ = e.executeExit(ctx, nextFundingTime)
+			return e.executeExit(ctx, nextFundingTime)
 		} else {
 			// Increasing Short Spot -> Entry Negative
-			_ = e.executeEntry(ctx, false, nextFundingTime)
+			return e.executeEntry(ctx, false, nextFundingTime)
 		}
 	}
 }

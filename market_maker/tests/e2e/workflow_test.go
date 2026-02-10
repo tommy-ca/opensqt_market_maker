@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -42,7 +43,7 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := filepath.Join(t.TempDir(), "test_recovery.db")
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_recovery_%d.db", time.Now().UnixNano()))
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -177,7 +178,7 @@ func TestE2E_HardCrash_OfflineFill(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := filepath.Join(t.TempDir(), "test_hard_crash.db")
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_hard_crash_%d.db", time.Now().UnixNano()))
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -301,7 +302,7 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := filepath.Join(t.TempDir(), "test_risk.db")
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_risk_%d.db", time.Now().UnixNano()))
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)

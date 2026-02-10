@@ -41,7 +41,7 @@ func ReconcileOrders(
 	for _, slot := range slots {
 		slot.Mu.RLock()
 		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			localFilled = localFilled.Add(pbu.ToGoDecimal(slot.PositionQty))
+			localFilled = localFilled.Add(slot.PositionQtyDec)
 		}
 		slot.Mu.RUnlock()
 	}
@@ -61,6 +61,7 @@ func ReconcileOrders(
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
 			slot.OrderStatus = order.Status
 			slot.OrderPrice = order.Price
+			slot.OrderPriceDec = pbu.ToGoDecimal(order.Price)
 			slot.OrderSide = order.Side
 
 			delete(activePrices, priceKey)
@@ -74,14 +75,16 @@ func ReconcileOrders(
 					logger.Warn("Adopting ghost BUY fill during sync", "price", priceKey, "order_id", slot.OrderId)
 					slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 					// We assume the full qty was filled for now
-					slot.PositionQty = slot.OrderPrice
-					localFilled = localFilled.Add(pbu.ToGoDecimal(slot.PositionQty))
+					slot.PositionQty = slot.OriginalQty
+					slot.PositionQtyDec = slot.OriginalQtyDec
+					localFilled = localFilled.Add(slot.PositionQtyDec)
 					isGhostFill = true
 				} else if slot.OrderSide == pb.OrderSide_ORDER_SIDE_SELL && exchangePosition.LessThan(localFilled) {
 					logger.Warn("Adopting ghost SELL fill during sync", "price", priceKey, "order_id", slot.OrderId)
 					slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
-					localFilled = localFilled.Sub(pbu.ToGoDecimal(slot.PositionQty))
+					localFilled = localFilled.Sub(slot.PositionQtyDec)
 					slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+					slot.PositionQtyDec = decimal.Zero
 					isGhostFill = true
 				}
 
@@ -92,6 +95,7 @@ func ReconcileOrders(
 				slot.OrderId = 0
 				slot.ClientOid = ""
 				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+				slot.OrderPriceDec = decimal.Zero
 				slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_UNSPECIFIED
 				res.ZombiesCleared++
 			}

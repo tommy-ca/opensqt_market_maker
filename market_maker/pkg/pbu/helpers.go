@@ -12,8 +12,8 @@ import (
 // ...
 
 // GenerateDeterministicOrderID generates a stable ClientOrderID for a given grid level.
-// It is based on (StrategyID, Price, Side) to prevent double-fills on restart.
-func GenerateDeterministicOrderID(strategyID string, price decimal.Decimal, side string, priceDecimals int) string {
+// It is based on (Symbol, StrategyID, Price, Side) to prevent double-fills on restart.
+func GenerateDeterministicOrderID(symbol string, strategyID string, price decimal.Decimal, side string, priceDecimals int) string {
 	priceInt := price.Mul(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals)))).Round(0).IntPart()
 
 	sideCode := "B"
@@ -21,13 +21,13 @@ func GenerateDeterministicOrderID(strategyID string, price decimal.Decimal, side
 		sideCode = "S"
 	}
 
-	return fmt.Sprintf("%s_%d_%s", strategyID, priceInt, sideCode)
+	return fmt.Sprintf("%s_%s_%d_%s", symbol, strategyID, priceInt, sideCode)
 }
 
 // GenerateCompactOrderID generates a compact ClientOrderID (< 18 chars)
 // Deprecated: Use GenerateDeterministicOrderID for grid trading.
-func GenerateCompactOrderID(price decimal.Decimal, side string, priceDecimals int) string {
-	return GenerateDeterministicOrderID("G", price, side, priceDecimals)
+func GenerateCompactOrderID(symbol string, price decimal.Decimal, side string, priceDecimals int) string {
+	return GenerateDeterministicOrderID(symbol, "G", price, side, priceDecimals)
 }
 
 // AddBrokerPrefix prepends broker-specific prefixes for commission tracking
@@ -71,12 +71,16 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 	}
 
 	parts := strings.Split(oid, "_")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return decimal.Zero, "", false
 	}
 
-	// Format is {strategyID}_{priceInt}_{sideCode}
-	priceInt, err := decimal.NewFromString(parts[1])
+	// Format is {symbol}_{strategyID}_{priceInt}_{sideCode} or {strategyID}_{priceInt}_{sideCode} (legacy)
+	// We handle both by taking the last two parts for price and side.
+	pricePart := parts[len(parts)-2]
+	sidePart := parts[len(parts)-1]
+
+	priceInt, err := decimal.NewFromString(pricePart)
 	if err != nil {
 		return decimal.Zero, "", false
 	}
@@ -84,7 +88,7 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 	price := priceInt.Div(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals))))
 
 	side := "BUY"
-	if parts[2] == "S" {
+	if sidePart == "S" {
 		side = "SELL"
 	}
 

@@ -107,9 +107,11 @@ func (m *SlotManager) handleFilled(slot *core.InventorySlot, update *pb.OrderUpd
 	if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 		slot.PositionQty = update.ExecutedQty
+		slot.PositionQtyDec = pbu.ToGoDecimal(update.ExecutedQty)
 	} else {
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
 		slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+		slot.PositionQtyDec = decimal.Zero
 	}
 	m.resetSlotLocked(slot)
 
@@ -158,7 +160,12 @@ func (m *SlotManager) getOrCreateSlotLocked(price decimal.Decimal) *core.Invento
 			SlotStatus:     pb.SlotStatus_SLOT_STATUS_FREE,
 			PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 			PositionQty:    pbu.FromGoDecimal(decimal.Zero),
+			OriginalQty:    pbu.FromGoDecimal(decimal.Zero), // Should be set by caller if needed
 		},
+		PriceDec:       price,
+		OrderPriceDec:  decimal.Zero,
+		PositionQtyDec: decimal.Zero,
+		OriginalQtyDec: decimal.Zero,
 	}
 	m.slots[key] = s
 	atomic.AddInt64(&m.totalSlots, 1)
@@ -188,7 +195,11 @@ func (m *SlotManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 
 	for k, s := range slots {
 		newSlot := &core.InventorySlot{
-			InventorySlot: s,
+			InventorySlot:  s,
+			PriceDec:       pbu.ToGoDecimal(s.Price),
+			OrderPriceDec:  pbu.ToGoDecimal(s.OrderPrice),
+			PositionQtyDec: pbu.ToGoDecimal(s.PositionQty),
+			OriginalQtyDec: pbu.ToGoDecimal(s.OriginalQty),
 		}
 		m.slots[k] = newSlot
 		if s.OrderId != 0 {
@@ -240,7 +251,9 @@ func (m *SlotManager) ApplyActionResults(results []core.OrderActionResult) error
 			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
 			slot.OrderSide = res.Order.Side
 			slot.OrderPrice = res.Order.Price
+			slot.OrderPriceDec = pbu.ToGoDecimal(res.Order.Price)
 			slot.OrderStatus = res.Order.Status
+			slot.OriginalQty = res.Order.Quantity
 
 			// Update manager maps while holding BOTH locks.
 			// This is safe because we follow the hierarchy: m.mu -> slot.Mu

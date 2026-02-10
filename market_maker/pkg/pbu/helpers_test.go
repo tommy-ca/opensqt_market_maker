@@ -11,22 +11,24 @@ func TestGenerateDeterministicOrderID(t *testing.T) {
 	price := decimal.NewFromFloat(100.5)
 	side := "BUY"
 	decimals := 2
+	symbol := "BTCUSDT"
 	strategyID := "BTCG"
 
-	oid1 := GenerateDeterministicOrderID(strategyID, price, side, decimals)
-	oid2 := GenerateDeterministicOrderID(strategyID, price, side, decimals)
+	oid1 := GenerateDeterministicOrderID(symbol, strategyID, price, side, decimals)
+	oid2 := GenerateDeterministicOrderID(symbol, strategyID, price, side, decimals)
 
 	assert.Equal(t, oid1, oid2, "Deterministic OID should be stable")
+	assert.Contains(t, oid1, symbol)
 	assert.Contains(t, oid1, strategyID)
 	assert.Contains(t, oid1, "10050")
 	assert.Contains(t, oid1, "B")
 
 	// Different price should give different OID
-	oid3 := GenerateDeterministicOrderID(strategyID, decimal.NewFromInt(101), side, decimals)
+	oid3 := GenerateDeterministicOrderID(symbol, strategyID, decimal.NewFromInt(101), side, decimals)
 	assert.NotEqual(t, oid1, oid3)
 
 	// Different side should give different OID
-	oid4 := GenerateDeterministicOrderID(strategyID, price, "SELL", decimals)
+	oid4 := GenerateDeterministicOrderID(symbol, strategyID, price, "SELL", decimals)
 	assert.NotEqual(t, oid1, oid4)
 }
 
@@ -34,9 +36,10 @@ func TestParseCompactOrderID(t *testing.T) {
 	price := decimal.NewFromFloat(100.5)
 	side := "SELL"
 	decimals := 2
+	symbol := "BTCUSDT"
 	strategyID := "BTCG"
 
-	oid := GenerateDeterministicOrderID(strategyID, price, side, decimals)
+	oid := GenerateDeterministicOrderID(symbol, strategyID, price, side, decimals)
 	p, s, ok := ParseCompactOrderID(oid, decimals)
 
 	assert.True(t, ok)
@@ -46,14 +49,15 @@ func TestParseCompactOrderID(t *testing.T) {
 
 func TestAddBrokerPrefixTruncationSafety(t *testing.T) {
 	// Long strategy ID that will cause truncation
+	symbol := "EXTREMELY_LONG_SYMBOL_NAME_FOR_TESTING"
 	strategyID := "VeryLongStrategyNameThatWillCauseTruncation"
 	price1 := decimal.NewFromFloat(100.5)
 	price2 := decimal.NewFromFloat(100.6)
 	side := "BUY"
 	decimals := 2
 
-	oid1 := GenerateDeterministicOrderID(strategyID, price1, side, decimals)
-	oid2 := GenerateDeterministicOrderID(strategyID, price2, side, decimals)
+	oid1 := GenerateDeterministicOrderID(symbol, strategyID, price1, side, decimals)
+	oid2 := GenerateDeterministicOrderID(symbol, strategyID, price2, side, decimals)
 
 	// They should be different
 	assert.NotEqual(t, oid1, oid2)

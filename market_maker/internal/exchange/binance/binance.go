@@ -963,7 +963,78 @@ func (e *BinanceExchange) GetOrder(ctx context.Context, symbol string, orderID i
 }
 
 func (e *BinanceExchange) GetOpenOrders(ctx context.Context, symbol string, useMargin bool) ([]*pb.Order, error) {
-	return nil, nil
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	url := fmt.Sprintf("%s/fapi/v1/openOrders", baseURL)
+	if symbol != "" {
+		url += fmt.Sprintf("?symbol=%s", symbol)
+	}
+
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawOrders []struct {
+		OrderID       int64  `json:"orderId"`
+		ClientOrderID string `json:"clientOrderId"`
+		Symbol        string `json:"symbol"`
+		Status        string `json:"status"`
+		Price         string `json:"price"`
+		OrigQty       string `json:"origQty"`
+		ExecutedQty   string `json:"executedQty"`
+		AvgPrice      string `json:"avgPrice"`
+		Side          string `json:"side"`
+		Type          string `json:"type"`
+		UpdateTime    int64  `json:"updateTime"`
+	}
+
+	if err := json.Unmarshal(body, &rawOrders); err != nil {
+		return nil, err
+	}
+
+	orders := make([]*pb.Order, 0, len(rawOrders))
+	for _, raw := range rawOrders {
+		status := e.mapOrderStatus(raw.Status)
+
+		var side pb.OrderSide
+		if raw.Side == "BUY" {
+			side = pb.OrderSide_ORDER_SIDE_BUY
+		} else {
+			side = pb.OrderSide_ORDER_SIDE_SELL
+		}
+
+		var orderType pb.OrderType
+		if raw.Type == "LIMIT" {
+			orderType = pb.OrderType_ORDER_TYPE_LIMIT
+		} else if raw.Type == "MARKET" {
+			orderType = pb.OrderType_ORDER_TYPE_MARKET
+		}
+
+		pVal, _ := decimal.NewFromString(raw.Price)
+		qVal, _ := decimal.NewFromString(raw.OrigQty)
+		eVal, _ := decimal.NewFromString(raw.ExecutedQty)
+		avgVal, _ := decimal.NewFromString(raw.AvgPrice)
+
+		orders = append(orders, &pb.Order{
+			OrderId:       raw.OrderID,
+			ClientOrderId: raw.ClientOrderID,
+			Symbol:        raw.Symbol,
+			Side:          side,
+			Type:          orderType,
+			Status:        status,
+			Price:         pbu.FromGoDecimal(pVal),
+			Quantity:      pbu.FromGoDecimal(qVal),
+			ExecutedQty:   pbu.FromGoDecimal(eVal),
+			AvgPrice:      pbu.FromGoDecimal(avgVal),
+			UpdateTime:    raw.UpdateTime,
+		})
+	}
+
+	return orders, nil
 }
 
 func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
@@ -1119,7 +1190,65 @@ func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
 }
 
 func (e *BinanceExchange) GetPositions(ctx context.Context, symbol string) ([]*pb.Position, error) {
-	return nil, nil
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	url := fmt.Sprintf("%s/fapi/v2/positionRisk", baseURL)
+	if symbol != "" {
+		url += fmt.Sprintf("?symbol=%s", symbol)
+	}
+
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawPositions []struct {
+		Symbol           string `json:"symbol"`
+		PositionAmt      string `json:"positionAmt"`
+		EntryPrice       string `json:"entryPrice"`
+		MarkPrice        string `json:"markPrice"`
+		UnRealizedProfit string `json:"unRealizedProfit"`
+		LiquidationPrice string `json:"liquidationPrice"`
+		Leverage         string `json:"leverage"`
+		MarginType       string `json:"marginType"`
+		IsolatedWallet   string `json:"isolatedWallet"`
+	}
+
+	if err := json.Unmarshal(body, &rawPositions); err != nil {
+		return nil, err
+	}
+
+	positions := make([]*pb.Position, 0)
+	for _, p := range rawPositions {
+		amt, _ := decimal.NewFromString(p.PositionAmt)
+		if amt.IsZero() && symbol == "" {
+			continue
+		}
+
+		ep, _ := decimal.NewFromString(p.EntryPrice)
+		mp, _ := decimal.NewFromString(p.MarkPrice)
+		upnl, _ := decimal.NewFromString(p.UnRealizedProfit)
+		lp, _ := decimal.NewFromString(p.LiquidationPrice)
+		lev, _ := decimal.NewFromString(p.Leverage)
+		iw, _ := decimal.NewFromString(p.IsolatedWallet)
+
+		positions = append(positions, &pb.Position{
+			Symbol:           p.Symbol,
+			Size:             pbu.FromGoDecimal(amt),
+			EntryPrice:       pbu.FromGoDecimal(ep),
+			MarkPrice:        pbu.FromGoDecimal(mp),
+			UnrealizedPnl:    pbu.FromGoDecimal(upnl),
+			LiquidationPrice: pbu.FromGoDecimal(lp),
+			Leverage:         int32(lev.IntPart()),
+			MarginType:       p.MarginType,
+			IsolatedMargin:   pbu.FromGoDecimal(iw),
+		})
+	}
+
+	return positions, nil
 }
 
 func (e *BinanceExchange) GetBalance(ctx context.Context, asset string) (decimal.Decimal, error) {

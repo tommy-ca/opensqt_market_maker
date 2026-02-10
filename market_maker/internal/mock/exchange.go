@@ -43,6 +43,15 @@ type MockExchange struct {
 
 	// Fault injection
 	ErrorChance float64
+
+	// TraceBuffer for interaction logging
+	traceBuffer []TraceEvent
+}
+
+type TraceEvent struct {
+	Timestamp time.Time
+	Type      string
+	Details   map[string]interface{}
 }
 
 func NewMockExchange(name string) *MockExchange {
@@ -75,6 +84,28 @@ func (m *MockExchange) shouldError() bool {
 		return false
 	}
 	return rand.Float64() < m.ErrorChance
+}
+
+func (m *MockExchange) recordEventLocked(eventType string, details map[string]interface{}) {
+	m.traceBuffer = append(m.traceBuffer, TraceEvent{
+		Timestamp: time.Now(),
+		Type:      eventType,
+		Details:   details,
+	})
+}
+
+func (m *MockExchange) GetTraceEvents() []TraceEvent {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	events := make([]TraceEvent, len(m.traceBuffer))
+	copy(events, m.traceBuffer)
+	return events
+}
+
+func (m *MockExchange) ClearTraceEvents() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.traceBuffer = nil
 }
 
 func (m *MockExchange) SetHistoricalFundingRates(symbol string, rates []*pb.FundingRate) {
@@ -172,6 +203,15 @@ func (m *MockExchange) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest
 		m.clientOrderMap[order.ClientOrderId] = order.OrderId
 	}
 
+	m.recordEventLocked("place_order", map[string]interface{}{
+		"order_id":        id,
+		"client_order_id": req.ClientOrderId,
+		"symbol":          req.Symbol,
+		"side":            req.Side,
+		"price":           pbu.ToGoDecimal(req.Price),
+		"quantity":        pbu.ToGoDecimal(req.Quantity),
+	})
+
 	// Notify order stream
 	if m.isOrderStreamRunning {
 		update := pb.OrderUpdate{
@@ -223,6 +263,12 @@ func (m *MockExchange) CancelOrder(ctx context.Context, symbol string, orderID i
 	order.Status = pb.OrderStatus_ORDER_STATUS_CANCELED
 	order.UpdateTime = time.Now().UnixMilli()
 
+	m.recordEventLocked("cancel_order", map[string]interface{}{
+		"order_id":        order.OrderId,
+		"client_order_id": order.ClientOrderId,
+		"symbol":          symbol,
+	})
+
 	// Notify order stream
 	if m.isOrderStreamRunning {
 		update := pb.OrderUpdate{
@@ -255,6 +301,13 @@ func (m *MockExchange) CancelAllOrders(ctx context.Context, symbol string, useMa
 		if order.Symbol == symbol && order.Status == pb.OrderStatus_ORDER_STATUS_NEW {
 			order.Status = pb.OrderStatus_ORDER_STATUS_CANCELED
 			order.UpdateTime = time.Now().UnixMilli()
+
+			m.recordEventLocked("cancel_order", map[string]interface{}{
+				"order_id":        order.OrderId,
+				"client_order_id": order.ClientOrderId,
+				"symbol":          symbol,
+				"batch":           true,
+			})
 
 			if m.isOrderStreamRunning {
 				update := pb.OrderUpdate{
@@ -671,6 +724,13 @@ func (m *MockExchange) SimulateOrderFill(orderID int64, filledQty decimal.Decima
 	order.ExecutedQty = pbu.FromGoDecimal(filledQty)
 	order.AvgPrice = pbu.FromGoDecimal(avgPrice)
 	order.UpdateTime = time.Now().UnixMilli()
+
+	m.recordEventLocked("order_fill", map[string]interface{}{
+		"order_id":   order.OrderId,
+		"symbol":     order.Symbol,
+		"filled_qty": filledQty,
+		"avg_price":  avgPrice,
+	})
 
 	// Update positions
 	symbol := order.Symbol

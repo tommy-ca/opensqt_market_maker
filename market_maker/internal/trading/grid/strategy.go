@@ -289,7 +289,7 @@ func (s *Strategy) generateClientOrderID(price decimal.Decimal, side pb.OrderSid
 	if strategyID == "" {
 		strategyID = "G"
 	}
-	return pbu.GenerateDeterministicOrderID(strategyID, price, side.String(), s.cfg.PriceDecimals)
+	return pbu.GenerateDeterministicOrderID(s.cfg.Symbol, strategyID, price, side.String(), s.cfg.PriceDecimals)
 }
 
 func (s *Strategy) calculateDynamicQuantity(vol float64) decimal.Decimal {

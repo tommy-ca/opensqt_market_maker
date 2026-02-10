@@ -147,6 +147,12 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 		c.slotManager.RestoreFromExchangePosition(totalPos)
 	}
 
+	if c.regimeMonitor != nil {
+		if err := c.regimeMonitor.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start regime monitor: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -187,23 +193,27 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 
 	// 3. Calculate Strategy Actions
 	mgrSlots := c.slotManager.GetSlots()
-	if cap(c.stratSlots) < len(mgrSlots) {
-		c.stratSlots = make([]grid.Slot, 0, len(mgrSlots))
+	numSlots := len(mgrSlots)
+	if cap(c.stratSlots) < numSlots {
+		c.stratSlots = make([]grid.Slot, numSlots)
+	} else {
+		c.stratSlots = c.stratSlots[:numSlots]
 	}
-	c.stratSlots = c.stratSlots[:0]
 
+	i := 0
 	for _, s := range mgrSlots {
 		s.Mu.RLock()
-		c.stratSlots = append(c.stratSlots, grid.Slot{
-			Price:          pbu.ToGoDecimal(s.Price),
+		c.stratSlots[i] = grid.Slot{
+			Price:          s.PriceDec,
 			PositionStatus: s.PositionStatus,
-			PositionQty:    pbu.ToGoDecimal(s.PositionQty),
+			PositionQty:    s.PositionQtyDec,
 			SlotStatus:     s.SlotStatus,
 			OrderSide:      s.OrderSide,
-			OrderPrice:     pbu.ToGoDecimal(s.OrderPrice),
+			OrderPrice:     s.OrderPriceDec,
 			OrderId:        s.OrderId,
-		})
+		}
 		s.Mu.RUnlock()
+		i++
 	}
 
 	// 4. Get Current Regime
@@ -213,6 +223,11 @@ func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChan
 	}
 
 	strategyActions = c.strategy.CalculateActions(pVal, c.anchorPrice, atr, volFactor, isTriggeredNow, currentRegime, c.stratSlots)
+
+	if len(strategyActions) > 0 {
+		c.slotManager.MarkSlotsPending(strategyActions)
+	}
+
 	c.mu.Unlock()
 
 	// Phase 2: Execution (Unlocked - prevents blocking hot path)

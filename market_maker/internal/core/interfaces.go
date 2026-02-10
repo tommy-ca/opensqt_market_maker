@@ -14,6 +14,12 @@ import (
 type InventorySlot struct {
 	*pb.InventorySlot
 	Mu sync.RWMutex `json:"-"`
+
+	// Cached decimal versions for hot path optimization
+	PriceDec       decimal.Decimal `json:"-"`
+	OrderPriceDec  decimal.Decimal `json:"-"`
+	PositionQtyDec decimal.Decimal `json:"-"`
+	OriginalQtyDec decimal.Decimal `json:"-"`
 }
 
 // OrderActionResult represents the result of applying an OrderAction

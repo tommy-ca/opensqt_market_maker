@@ -35,6 +35,7 @@ type InventorySlot struct {
 	OrderFilledQty    *decimal.Decimal       `protobuf:"bytes,9,opt,name=order_filled_qty,json=orderFilledQty,proto3" json:"order_filled_qty,omitempty"`
 	SlotStatus        SlotStatus             `protobuf:"varint,10,opt,name=slot_status,json=slotStatus,proto3,enum=opensqt.market_maker.v1.SlotStatus" json:"slot_status,omitempty"`
 	PostOnlyFailCount int32                  `protobuf:"varint,11,opt,name=post_only_fail_count,json=postOnlyFailCount,proto3" json:"post_only_fail_count,omitempty"`
+	OriginalQty       *decimal.Decimal       `protobuf:"bytes,12,opt,name=original_qty,json=originalQty,proto3" json:"original_qty,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -144,6 +145,13 @@ func (x *InventorySlot) GetPostOnlyFailCount() int32 {
 		return x.PostOnlyFailCount
 	}
 	return 0
+}
+
+func (x *InventorySlot) GetOriginalQty() *decimal.Decimal {
+	if x != nil {
+		return x.OriginalQty
+	}
+	return nil
 }
 
 type State struct {
@@ -646,7 +654,7 @@ var File_opensqt_market_maker_v1_state_proto protoreflect.FileDescriptor
 
 const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\n" +
-	"#opensqt/market_maker/v1/state.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\x1a#opensqt/market_maker/v1/types.proto\x1a'opensqt/market_maker/v1/resources.proto\"\xfa\x04\n" +
+	"#opensqt/market_maker/v1/state.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\x1a#opensqt/market_maker/v1/types.proto\x1a'opensqt/market_maker/v1/resources.proto\"\xb3\x05\n" +
 	"\rInventorySlot\x12*\n" +
 	"\x05price\x18\x01 \x01(\v2\x14.google.type.DecimalR\x05price\x12P\n" +
 	"\x0fposition_status\x18\x02 \x01(\x0e2'.opensqt.market_maker.v1.PositionStatusR\x0epositionStatus\x127\n" +
@@ -663,7 +671,8 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\vslot_status\x18\n" +
 	" \x01(\x0e2#.opensqt.market_maker.v1.SlotStatusR\n" +
 	"slotStatus\x12/\n" +
-	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\"\x93\x04\n" +
+	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\x127\n" +
+	"\foriginal_qty\x18\f \x01(\v2\x14.google.type.DecimalR\voriginalQty\"\x93\x04\n" +
 	"\x05State\x12?\n" +
 	"\x05slots\x18\x01 \x03(\v2).opensqt.market_maker.v1.State.SlotsEntryR\x05slots\x123\n" +
 	"\n" +
@@ -765,28 +774,29 @@ var file_opensqt_market_maker_v1_state_proto_depIdxs = []int32{
 	10, // 5: opensqt.market_maker.v1.InventorySlot.order_price:type_name -> google.type.Decimal
 	10, // 6: opensqt.market_maker.v1.InventorySlot.order_filled_qty:type_name -> google.type.Decimal
 	14, // 7: opensqt.market_maker.v1.InventorySlot.slot_status:type_name -> opensqt.market_maker.v1.SlotStatus
-	7,  // 8: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
-	10, // 9: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
-	8,  // 10: opensqt.market_maker.v1.State.order_index:type_name -> opensqt.market_maker.v1.State.OrderIndexEntry
-	9,  // 11: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
-	10, // 12: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
-	15, // 13: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
-	10, // 14: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
-	16, // 15: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
-	10, // 16: opensqt.market_maker.v1.TargetPositionState.size:type_name -> google.type.Decimal
-	10, // 17: opensqt.market_maker.v1.TargetOrder.price:type_name -> google.type.Decimal
-	10, // 18: opensqt.market_maker.v1.TargetOrder.quantity:type_name -> google.type.Decimal
-	12, // 19: opensqt.market_maker.v1.TargetOrder.side:type_name -> opensqt.market_maker.v1.OrderSide
-	17, // 20: opensqt.market_maker.v1.TargetOrder.type:type_name -> opensqt.market_maker.v1.OrderType
-	4,  // 21: opensqt.market_maker.v1.TargetState.positions:type_name -> opensqt.market_maker.v1.TargetPositionState
-	5,  // 22: opensqt.market_maker.v1.TargetState.orders:type_name -> opensqt.market_maker.v1.TargetOrder
-	0,  // 23: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	0,  // 24: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	25, // [25:25] is the sub-list for method output_type
-	25, // [25:25] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	10, // 8: opensqt.market_maker.v1.InventorySlot.original_qty:type_name -> google.type.Decimal
+	7,  // 9: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
+	10, // 10: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
+	8,  // 11: opensqt.market_maker.v1.State.order_index:type_name -> opensqt.market_maker.v1.State.OrderIndexEntry
+	9,  // 12: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
+	10, // 13: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
+	15, // 14: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
+	10, // 15: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
+	16, // 16: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
+	10, // 17: opensqt.market_maker.v1.TargetPositionState.size:type_name -> google.type.Decimal
+	10, // 18: opensqt.market_maker.v1.TargetOrder.price:type_name -> google.type.Decimal
+	10, // 19: opensqt.market_maker.v1.TargetOrder.quantity:type_name -> google.type.Decimal
+	12, // 20: opensqt.market_maker.v1.TargetOrder.side:type_name -> opensqt.market_maker.v1.OrderSide
+	17, // 21: opensqt.market_maker.v1.TargetOrder.type:type_name -> opensqt.market_maker.v1.OrderType
+	4,  // 22: opensqt.market_maker.v1.TargetState.positions:type_name -> opensqt.market_maker.v1.TargetPositionState
+	5,  // 23: opensqt.market_maker.v1.TargetState.orders:type_name -> opensqt.market_maker.v1.TargetOrder
+	0,  // 24: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	0,  // 25: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_opensqt_market_maker_v1_state_proto_init() }
