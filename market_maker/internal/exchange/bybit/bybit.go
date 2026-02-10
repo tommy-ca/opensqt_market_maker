@@ -42,7 +42,14 @@ type BybitExchange struct {
 }
 
 // NewBybitExchange creates a new Bybit exchange instance
-func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BybitExchange {
+func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*BybitExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("bybit base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("bybit", cfg, logger)
 	e := &BybitExchange{
 		BaseAdapter: b,
@@ -55,7 +62,7 @@ func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BybitExc
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
 }
 
 // SignRequest adds authentication headers to the request

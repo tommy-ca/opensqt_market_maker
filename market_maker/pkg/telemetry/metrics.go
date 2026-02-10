@@ -24,6 +24,7 @@ const (
 	MetricQualityScore       = "market_maker_quality_score"
 	MetricDeltaNeutrality    = "market_maker_delta_neutrality"
 	MetricToxicBasisCount    = "market_maker_toxic_basis_count"
+	MetricRegimeChanges      = "market_maker_regime_changes_total"
 )
 
 // MetricsHolder holds initialized instruments
@@ -42,6 +43,7 @@ type MetricsHolder struct {
 	QualityScore       metric.Float64ObservableGauge
 	DeltaNeutrality    metric.Float64ObservableGauge
 	ToxicBasisCount    metric.Int64ObservableGauge
+	RegimeChanges      metric.Int64Counter
 
 	// State for observable gauges
 	mu               sync.RWMutex
@@ -213,6 +215,11 @@ func (m *MetricsHolder) InitMetrics(meter metric.Meter) error {
 			}
 			return nil
 		}))
+	if err != nil {
+		return err
+	}
+
+	m.RegimeChanges, err = meter.Int64Counter(MetricRegimeChanges, metric.WithDescription("Total number of market regime changes"))
 	if err != nil {
 		return err
 	}

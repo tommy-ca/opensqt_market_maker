@@ -8,6 +8,7 @@ import (
 	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/pbu"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,7 +37,6 @@ type GridCoordinator struct {
 	isRiskTriggered bool
 	isDirty         bool
 	lastSaveTime    time.Time
-	saveTimer       *time.Timer
 	stratSlots      []core.StrategySlot
 	mu              sync.Mutex
 }
@@ -54,9 +54,29 @@ type GridCoordinatorDeps struct {
 
 func NewGridCoordinator(deps GridCoordinatorDeps) *GridCoordinator {
 	var exch core.IExchange
-	for _, e := range deps.Exchanges {
-		exch = e
-		break
+
+	// Try to find configured exchange first
+	if deps.Cfg.Exchange != "" {
+		if e, ok := deps.Exchanges[deps.Cfg.Exchange]; ok {
+			exch = e
+		}
+	}
+
+	// Fallback to deterministic selection if not found or not configured
+	if exch == nil && len(deps.Exchanges) > 0 {
+		keys := make([]string, 0, len(deps.Exchanges))
+		for k := range deps.Exchanges {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		exch = deps.Exchanges[keys[0]]
+
+		// Log warning if exchange was configured but not found
+		if deps.Cfg.Exchange != "" {
+			deps.Logger.Warn("Configured exchange not found, falling back to deterministic selection",
+				"configured", deps.Cfg.Exchange,
+				"selected", keys[0])
+		}
 	}
 
 	strategyCfg := grid.StrategyConfig{
@@ -169,6 +189,31 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 	return nil
 }
 
+func (c *GridCoordinator) Stop() error {
+	c.logger.Info("Stopping Grid Coordinator")
+
+	var errs []error
+
+	if c.regimeMonitor != nil {
+		if err := c.regimeMonitor.Stop(); err != nil {
+			c.logger.Error("Failed to stop regime monitor", "error", err)
+			errs = append(errs, err)
+		}
+	}
+
+	if c.monitor != nil {
+		if err := c.monitor.Stop(); err != nil {
+			c.logger.Error("Failed to stop risk monitor", "error", err)
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("errors stopping coordinator: %v", errs)
+	}
+	return nil
+}
+
 func (c *GridCoordinator) OnPriceUpdate(ctx context.Context, price *pb.PriceChange) error {
 	var riskActions []*pb.OrderAction
 	var strategyActions []*pb.OrderAction
@@ -261,31 +306,18 @@ func (c *GridCoordinator) OnOrderUpdate(ctx context.Context, update *pb.OrderUpd
 
 func (c *GridCoordinator) maybeSaveState(ctx context.Context, force bool) error {
 	c.mu.Lock()
-	now := time.Now()
-	isHeartbeat := now.Sub(c.lastSaveTime) > 30*time.Second
-	cooldownExpired := now.Sub(c.lastSaveTime) > 500*time.Millisecond
 
-	if force || isHeartbeat || (c.isDirty && cooldownExpired) {
-		pVal := c.lastPrice
+	// Reactive check: Only save if forced or (dirty + cooldown expired)
+	shouldSave := force || (c.isDirty && time.Since(c.lastSaveTime) > 500*time.Millisecond)
+
+	if !shouldSave {
 		c.mu.Unlock()
-		return c.saveState(ctx, pVal)
+		return nil
 	}
 
-	if c.isDirty && c.saveTimer == nil {
-		delay := 500*time.Millisecond - now.Sub(c.lastSaveTime)
-		if delay < 0 {
-			delay = 0
-		}
-		c.saveTimer = time.AfterFunc(delay, func() {
-			c.mu.Lock()
-			pVal := c.lastPrice
-			c.mu.Unlock()
-			_ = c.saveState(context.Background(), pVal)
-		})
-	}
-
+	pVal := c.lastPrice
 	c.mu.Unlock()
-	return nil
+	return c.saveState(ctx, pVal)
 }
 
 func (c *GridCoordinator) GetRegimeMonitor() *monitor.RegimeMonitor {
@@ -300,10 +332,6 @@ func (c *GridCoordinator) SetStrategyID(id string) {
 
 func (c *GridCoordinator) saveState(ctx context.Context, lastPrice decimal.Decimal) error {
 	c.mu.Lock()
-	if c.saveTimer != nil {
-		c.saveTimer.Stop()
-		c.saveTimer = nil
-	}
 	c.lastSaveTime = time.Now()
 	c.isDirty = false
 	isRiskTriggered := c.isRiskTriggered

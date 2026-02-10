@@ -24,6 +24,7 @@ type SimpleEngine struct {
 	positionManager core.IPositionManager
 	orderExecutor   core.IOrderExecutor
 	riskMonitor     core.IRiskMonitor
+	strategy        core.IStrategy
 	logger          core.ILogger
 
 	mu sync.Mutex
@@ -46,6 +47,7 @@ func NewSimpleEngine(
 	pm core.IPositionManager,
 	oe core.IOrderExecutor,
 	rm core.IRiskMonitor,
+	strategy core.IStrategy,
 	logger core.ILogger,
 ) engine.Engine {
 	tracer := telemetry.GetTracer("workflow-engine")
@@ -63,6 +65,7 @@ func NewSimpleEngine(
 		positionManager: pm,
 		orderExecutor:   oe,
 		riskMonitor:     rm,
+		strategy:        strategy,
 		logger:          logger,
 		tracer:          tracer,
 		priceCounter:    priceCounter,
@@ -164,12 +167,26 @@ func (e *SimpleEngine) OnPriceUpdate(ctx context.Context, price *pb.PriceChange)
 	}
 
 	// 2. Calculate Adjustments (Deterministic Decision)
-	{
-		actions, err := e.positionManager.CalculateAdjustments(ctx, pVal)
-		if err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("failed to calculate adjustments: %w", err)
+	if e.strategy != nil {
+		// Prepare inputs for strategy
+		stratSlots := e.positionManager.GetStrategySlots(nil)
+		anchorPrice := e.positionManager.GetAnchorPrice()
+
+		atr := decimal.Zero
+		volFactor := 0.0
+		isRiskTriggered := false
+		regime := pb.MarketRegime_MARKET_REGIME_RANGE // Default
+
+		if e.riskMonitor != nil {
+			atr = e.riskMonitor.GetATR(price.Symbol)
+			volFactor = e.riskMonitor.GetVolatilityFactor(price.Symbol)
+			isRiskTriggered = e.riskMonitor.IsTriggered()
 		}
+
+		actions := e.strategy.CalculateActions(pVal, anchorPrice, atr, volFactor, isRiskTriggered, regime, stratSlots)
+
+		// Post-processing: Ensure slots exist for any PLACE actions returned by strategy
+		e.positionManager.MarkSlotsPending(actions)
 
 		// 3. Execute Actions (Side Effects)
 		if len(actions) > 0 {

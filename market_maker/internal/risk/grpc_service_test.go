@@ -4,6 +4,7 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"testing"
@@ -115,11 +116,9 @@ type MockPositionManager struct {
 }
 
 func (m *MockPositionManager) Initialize(anchorPrice decimal.Decimal) error              { return nil }
+func (m *MockPositionManager) GetAnchorPrice() decimal.Decimal                           { return decimal.Zero }
 func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error     { return nil }
 func (m *MockPositionManager) RestoreFromExchangePosition(totalPosition decimal.Decimal) {}
-func (m *MockPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	return nil, nil
-}
 func (m *MockPositionManager) ApplyActionResults(results []core.OrderActionResult) error { return nil }
 func (m *MockPositionManager) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
 	args := m.Called(ctx, update)
@@ -138,9 +137,6 @@ func (m *MockPositionManager) GetStrategySlots(target []core.StrategySlot) []cor
 func (m *MockPositionManager) GetSlotCount() int { return 0 }
 func (m *MockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	return &pb.PositionManagerSnapshot{Slots: make(map[string]*pb.InventorySlot)}
-}
-func (m *MockPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	return nil
 }
 func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 }
@@ -168,13 +164,15 @@ func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 }
 func (m *MockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {}
 
+// Tests
+
 func TestRiskServiceServer_GetCircuitBreakerStatus(t *testing.T) {
 	cb := NewCircuitBreaker(CircuitConfig{
 		MaxConsecutiveLosses: 3,
 		CooldownPeriod:       1 * time.Hour,
 	})
 
-	server := NewRiskServiceServer(nil, nil, cb)
+	server := NewRiskServiceServer(nil, nil, cb, nil)
 
 	resp, err := server.GetCircuitBreakerStatus(context.Background(), &pb.GetCircuitBreakerStatusRequest{Symbol: "BTCUSDT"})
 	assert.NoError(t, err)
@@ -189,7 +187,7 @@ func TestRiskServiceServer_GetCircuitBreakerStatus(t *testing.T) {
 
 func TestRiskServiceServer_ControlCircuitBreaker(t *testing.T) {
 	cb := NewCircuitBreaker(CircuitConfig{})
-	server := NewRiskServiceServer(nil, nil, cb)
+	server := NewRiskServiceServer(nil, nil, cb, nil)
 
 	// Manual Open
 	_, err := server.OpenCircuitBreaker(context.Background(), &pb.OpenCircuitBreakerRequest{Symbol: "BTCUSDT", Reason: "Manual"})
@@ -208,7 +206,7 @@ func TestRiskServiceServer_GetRiskMetrics(t *testing.T) {
 	mockEx.On("GetHistoricalKlines", mock.Anything, "BTCUSDT", "1m", mock.Anything).Return([]*pb.Candle{}, nil)
 
 	rm := NewRiskMonitor(mockEx, logger, []string{"BTCUSDT"}, "1m", 2.0, 10, 1, "All", nil)
-	server := NewRiskServiceServer(rm, nil, nil)
+	server := NewRiskServiceServer(rm, nil, nil, nil)
 
 	// Inject some data
 	rm.HandleKlineUpdate(&pb.Candle{
@@ -236,9 +234,31 @@ func TestRiskServiceServer_TriggerReconciliation(t *testing.T) {
 	}, nil)
 
 	rec := NewReconciler(mockEx, mockPm, nil, logger, "BTCUSDT", time.Hour)
-	server := NewRiskServiceServer(nil, rec, nil)
+	server := NewRiskServiceServer(nil, rec, nil, nil)
 
 	resp, err := server.TriggerReconciliation(context.Background(), &pb.TriggerReconciliationRequest{Symbol: "BTCUSDT"})
 	assert.NoError(t, err)
 	assert.Equal(t, "completed", resp.Status)
+}
+
+func TestRiskServiceServer_GetRegime(t *testing.T) {
+	logger := logging.NewLogger(logging.InfoLevel, nil)
+	mockEx := &ServiceMockExchange{}
+	// No need to mock GetHistoricalKlines unless Start is called
+
+	rm := monitor.NewRegimeMonitor(mockEx, logger, "BTCUSDT")
+	server := NewRiskServiceServer(nil, nil, nil, rm)
+
+	// Default regime should be RANGE
+	resp, err := server.GetRegime(context.Background(), &pb.GetRegimeRequest{Symbol: "BTCUSDT"})
+	assert.NoError(t, err)
+	assert.Equal(t, pb.MarketRegime_MARKET_REGIME_RANGE, resp.Regime)
+
+	// Manually update indicators to trigger BULL trend
+	// RSI > 70 -> BULL
+	rm.UpdateFromIndicators(80.0, 1.0)
+
+	resp, err = server.GetRegime(context.Background(), &pb.GetRegimeRequest{Symbol: "BTCUSDT"})
+	assert.NoError(t, err)
+	assert.Equal(t, pb.MarketRegime_MARKET_REGIME_BULL_TREND, resp.Regime)
 }

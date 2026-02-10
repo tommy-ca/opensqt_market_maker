@@ -40,7 +40,14 @@ type BinanceSpotExchange struct {
 }
 
 // NewBinanceSpotExchange creates a new Binance Spot exchange instance
-func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) *BinanceSpotExchange {
+func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) (*BinanceSpotExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("binance spot base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("binance_spot", cfg, logger)
 	e := &BinanceSpotExchange{
 		BaseAdapter: b,
@@ -51,7 +58,7 @@ func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, poo
 	b.SetSignRequest(e.SignRequest)
 	b.SetParseError(e.parseError)
 
-	return e
+	return e, nil
 }
 
 func (e *BinanceSpotExchange) GetName() string {

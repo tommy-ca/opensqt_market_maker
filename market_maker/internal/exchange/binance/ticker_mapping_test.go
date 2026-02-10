@@ -36,7 +36,8 @@ func TestBinanceExchange_GetTickers_Mapping(t *testing.T) {
 	cfg := &config.ExchangeConfig{
 		BaseURL: ts.URL,
 	}
-	ex := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	ex, err := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	require.NoError(t, err)
 
 	tickers, err := ex.GetTickers(context.Background())
 	require.NoError(t, err)

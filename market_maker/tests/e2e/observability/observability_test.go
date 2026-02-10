@@ -77,7 +77,7 @@ func TestE2E_ObservabilityFlow(t *testing.T) {
 	lis, err := net.Listen("tcp", ":0")
 	assert.NoError(t, err)
 	grpcServer := grpc.NewServer()
-	riskSvc := risk.NewRiskServiceServer(rm, nil, cb)
+	riskSvc := risk.NewRiskServiceServer(rm, nil, cb, nil)
 	posSvc := position.NewPositionServiceServer(pm, "mock")
 	pb.RegisterRiskServiceServer(grpcServer, riskSvc)
 	pb.RegisterPositionServiceServer(grpcServer, posSvc)

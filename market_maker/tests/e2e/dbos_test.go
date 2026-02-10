@@ -77,7 +77,7 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	// We use the workflows directly to simulate DBOS execution
-	w := durable.NewTradingWorkflows(pm, orderExecutor)
+	w := durable.NewTradingWorkflows(pm, orderExecutor, gridStrategy)
 
 	price := pb.PriceChange{
 		Symbol: symbol,
@@ -85,7 +85,11 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 	}
 
 	// Scenario: Workflow fails AFTER placing order but BEFORE applying results
-	actions, _ := pm.CalculateAdjustments(context.Background(), decimal.NewFromInt(45000))
+	stratSlots := pm.GetStrategySlots(nil)
+	actions := gridStrategy.CalculateActions(decimal.NewFromInt(45000), decimal.NewFromInt(45000), decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, stratSlots)
+
+	// Mark pending manually as the workflow would do it inside RunAsStep
+	pm.MarkSlotsPending(actions)
 
 	// First run fails at the final step
 	mockCtx1 := &e2eMockDBOSContext{

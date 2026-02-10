@@ -66,7 +66,14 @@ type BinanceExchange struct {
 }
 
 // NewBinanceExchange creates a new Binance exchange instance
-func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) *BinanceExchange {
+func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) (*BinanceExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("binance base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("binance", cfg, logger)
 	e := &BinanceExchange{
 		BaseAdapter: b,
@@ -78,7 +85,16 @@ func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *c
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
+}
+
+func sanitizeBody(body []byte) string {
+	const maxLen = 1024
+	s := string(body)
+	if len(s) > maxLen {
+		return s[:maxLen] + "...(truncated)"
+	}
+	return s
 }
 
 func (e *BinanceExchange) parseError(body []byte) error {
@@ -87,7 +103,7 @@ func (e *BinanceExchange) parseError(body []byte) error {
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("binance error (unmarshal failed): %s", string(body))
+		return fmt.Errorf("binance error (unmarshal failed): %s", sanitizeBody(body))
 	}
 
 	// Map Binance error codes to standard errors
@@ -678,7 +694,7 @@ func (e *BinanceExchange) batchPlaceOrdersInternal(ctx context.Context, baseURL,
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		e.Logger.Error("Batch order request failed", "status", resp.StatusCode, "body", string(body))
+		e.Logger.Error("Batch order request failed", "status", resp.StatusCode, "body", sanitizeBody(body))
 		return nil, false
 	}
 

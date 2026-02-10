@@ -43,7 +43,14 @@ type OKXExchange struct {
 }
 
 // NewOKXExchange creates a new OKX exchange instance
-func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) *OKXExchange {
+func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*OKXExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("okx base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("okx", cfg, logger)
 	e := &OKXExchange{
 		BaseAdapter: b,
@@ -56,7 +63,7 @@ func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) *OKXExchang
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
 }
 
 // SignRequest adds authentication headers to the request

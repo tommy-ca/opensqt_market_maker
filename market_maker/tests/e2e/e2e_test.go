@@ -95,7 +95,7 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, riskMonitor, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, riskMonitor, gridStrategy, logger)
 
 	cleanup := func() {
 		store.Close()

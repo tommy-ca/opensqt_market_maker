@@ -71,13 +71,14 @@ func TestGateStartPriceStream(t *testing.T) {
 	cfg := &config.ExchangeConfig{BaseURL: wsURL}
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTC_USDT"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTC_USDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	require.NoError(t, err, "StartPriceStream failed")
@@ -140,13 +141,14 @@ func TestGateStartOrderStream(t *testing.T) {
 		BaseURL:   wsURL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	require.NoError(t, err, "StartOrderStream failed")
@@ -184,7 +186,8 @@ func TestGatePlaceOrder(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	// Pre-seed multiplier to avoid extra API call in PlaceOrder
 	exchange.quantoMultiplier["BTC_USDT"] = decimal.NewFromInt(1)
@@ -226,7 +229,8 @@ func TestGateGetAccount(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	acc, err := exchange.GetAccount(context.Background())
 	require.NoError(t, err, "GetAccount failed")
@@ -256,9 +260,10 @@ func TestGateCancelOrder(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
-	err := exchange.CancelOrder(context.Background(), "BTC_USDT", 12345, false)
+	err = exchange.CancelOrder(context.Background(), "BTC_USDT", 12345, false)
 	require.NoError(t, err, "CancelOrder failed")
 }
 
@@ -269,7 +274,8 @@ func TestGateSignREST(t *testing.T) {
 		SecretKey: config.Secret(secretKey),
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	timestamp := int64(123456789)
 	method := "POST"
@@ -314,7 +320,8 @@ func TestGateGetSymbolInfo(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("DEBUG")
-	ex := NewGateExchange(cfg, logger)
+	ex, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	// Test with Gate style symbol

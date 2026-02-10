@@ -37,12 +37,12 @@ type MockPositionManagerForRollback struct {
 }
 
 func (m *MockPositionManagerForRollback) Initialize(anchorPrice decimal.Decimal) error { return nil }
+func (m *MockPositionManagerForRollback) GetAnchorPrice() decimal.Decimal {
+	return decimal.Zero
+}
 func (m *MockPositionManagerForRollback) RestoreState(slots map[string]*pb.InventorySlot) error {
 	args := m.Called(slots)
 	return args.Error(0)
-}
-func (m *MockPositionManagerForRollback) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	return nil, nil
 }
 func (m *MockPositionManagerForRollback) ApplyActionResults(results []core.OrderActionResult) error {
 	return nil
@@ -68,9 +68,6 @@ func (m *MockPositionManagerForRollback) GetSlotCount() int { return 0 }
 func (m *MockPositionManagerForRollback) GetSnapshot() *pb.PositionManagerSnapshot {
 	args := m.Called()
 	return args.Get(0).(*pb.PositionManagerSnapshot)
-}
-func (m *MockPositionManagerForRollback) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	return nil
 }
 func (m *MockPositionManagerForRollback) GetFills() []*pb.Fill                                      { return nil }
 func (m *MockPositionManagerForRollback) GetOrderHistory() []*pb.Order                              { return nil }
@@ -99,6 +96,7 @@ func TestOnOrderUpdate_PersistenceFailure_DoesNotMutateState(t *testing.T) {
 		mockPM,
 		nil, // No order executor needed
 		nil, // No risk monitor needed
+		nil, // No strategy needed
 		logger,
 	)
 

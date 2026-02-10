@@ -43,7 +43,8 @@ func TestBinanceMapping_AccountAndPositions(t *testing.T) {
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	acc, err := ex.GetAccount(context.Background())
 	assert.NoError(t, err)
@@ -92,7 +93,8 @@ func TestBinanceMapping_OrderUpdates(t *testing.T) {
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	order, err := ex.GetOrder(context.Background(), "BTCUSDT", 123456, "", false)
 	assert.NoError(t, err)

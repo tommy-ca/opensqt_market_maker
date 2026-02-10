@@ -34,16 +34,25 @@ func (m *MockDBOSContext) RunAsStep(ctx dbos.DBOSContext, fn dbos.StepFunc, opts
 	return res, err
 }
 
-type mockPM struct {
-	core.IPositionManager
-	calculatePrice decimal.Decimal
-	actions        []*pb.OrderAction
-	applyResults   []core.OrderActionResult
+type mockStrategy struct {
+	actions []*pb.OrderAction
 }
 
-func (m *mockPM) CalculateAdjustments(ctx context.Context, price decimal.Decimal) ([]*pb.OrderAction, error) {
-	m.calculatePrice = price
-	return m.actions, nil
+func (m *mockStrategy) CalculateActions(
+	currentPrice decimal.Decimal,
+	anchorPrice decimal.Decimal,
+	atr decimal.Decimal,
+	volatilityFactor float64,
+	isRiskTriggered bool,
+	regime pb.MarketRegime,
+	slots []core.StrategySlot,
+) []*pb.OrderAction {
+	return m.actions
+}
+
+type mockPM struct {
+	core.IPositionManager
+	applyResults []core.OrderActionResult
 }
 
 func (m *mockPM) ApplyActionResults(results []core.OrderActionResult) error {
@@ -53,6 +62,17 @@ func (m *mockPM) ApplyActionResults(results []core.OrderActionResult) error {
 
 func (m *mockPM) GetSnapshot() *pb.PositionManagerSnapshot {
 	return &pb.PositionManagerSnapshot{}
+}
+
+func (m *mockPM) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	return nil
+}
+
+func (m *mockPM) GetAnchorPrice() decimal.Decimal {
+	return decimal.NewFromInt(45000)
+}
+
+func (m *mockPM) MarkSlotsPending(actions []*pb.OrderAction) {
 }
 
 type mockOE struct {
@@ -66,16 +86,16 @@ func (m *mockOE) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb
 }
 
 func TestTradingWorkflows_OnPriceUpdate(t *testing.T) {
-	pm := &mockPM{
-		actions: []*pb.OrderAction{
-			{
-				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
-				Request: &pb.PlaceOrderRequest{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY},
-			},
+	pm := &mockPM{}
+	actions := []*pb.OrderAction{
+		{
+			Type:    pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+			Request: &pb.PlaceOrderRequest{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY},
 		},
 	}
+	strategy := &mockStrategy{actions: actions}
 	oe := &mockOE{}
-	w := NewTradingWorkflows(pm, oe)
+	w := NewTradingWorkflows(pm, oe, strategy)
 
 	price := pb.PriceChange{
 		Symbol: "BTCUSDT",
@@ -84,9 +104,9 @@ func TestTradingWorkflows_OnPriceUpdate(t *testing.T) {
 
 	mockCtx := &MockDBOSContext{
 		StepResults: []any{
-			pm.actions, // Step 1: Calculate Adjustments
+			actions, // Step 1: Calculate Actions (via Strategy)
 			core.OrderActionResult{ // Step 2: Place Order
-				Action: pm.actions[0],
+				Action: actions[0],
 				Order:  &pb.Order{OrderId: 12345},
 			},
 			nil, // Step 3: Apply Results
@@ -99,9 +119,8 @@ func TestTradingWorkflows_OnPriceUpdate(t *testing.T) {
 		t.Fatalf("Workflow failed: %v", err)
 	}
 
-	if !pm.calculatePrice.Equal(decimal.NewFromInt(45000)) {
-		t.Errorf("Expected price 45000, got %s", pm.calculatePrice)
-	}
+	// We don't verify calculatePrice on pm anymore as it's not passed to pm
+	// We could verify it on strategy if we stored it in mockStrategy
 
 	if len(oe.placedRequests) != 1 {
 		t.Errorf("Expected 1 order placed, got %d", len(oe.placedRequests))
@@ -115,16 +134,16 @@ func TestTradingWorkflows_OnPriceUpdate(t *testing.T) {
 }
 
 func TestTradingWorkflows_OnPriceUpdate_Resumption(t *testing.T) {
-	pm := &mockPM{
-		actions: []*pb.OrderAction{
-			{
-				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
-				Request: &pb.PlaceOrderRequest{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY},
-			},
+	pm := &mockPM{}
+	actions := []*pb.OrderAction{
+		{
+			Type:    pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+			Request: &pb.PlaceOrderRequest{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY},
 		},
 	}
+	strategy := &mockStrategy{actions: actions}
 	oe := &mockOE{}
-	w := NewTradingWorkflows(pm, oe)
+	w := NewTradingWorkflows(pm, oe, strategy)
 
 	price := pb.PriceChange{
 		Symbol: "BTCUSDT",
@@ -134,9 +153,9 @@ func TestTradingWorkflows_OnPriceUpdate_Resumption(t *testing.T) {
 	// First execution fails at Step 3 (Apply Results)
 	mockCtx1 := &MockDBOSContext{
 		StepResults: []any{
-			pm.actions, // Step 1: Success
+			actions, // Step 1: Success
 			core.OrderActionResult{ // Step 2: Success
-				Action: pm.actions[0],
+				Action: actions[0],
 				Order:  &pb.Order{OrderId: 12345},
 			},
 			nil, // Step 3: Failure
@@ -161,9 +180,9 @@ func TestTradingWorkflows_OnPriceUpdate_Resumption(t *testing.T) {
 
 	mockCtx2 := &MockDBOSContext{
 		StepResults: []any{
-			pm.actions, // Step 1: Cached
+			actions, // Step 1: Cached
 			core.OrderActionResult{ // Step 2: Cached
-				Action: pm.actions[0],
+				Action: actions[0],
 				Order:  &pb.Order{OrderId: 12345},
 			},
 			nil, // Step 3: Success this time

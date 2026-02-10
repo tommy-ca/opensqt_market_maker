@@ -2,6 +2,7 @@ package gridengine
 
 import (
 	"context"
+	"fmt"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/concurrency"
@@ -62,6 +63,25 @@ func (e *GridEngine) Start(ctx context.Context) error {
 }
 
 func (e *GridEngine) Stop() error {
+	e.logger.Info("Stopping Grid Engine")
+
+	var errs []error
+
+	if e.coordinator != nil {
+		if err := e.coordinator.Stop(); err != nil {
+			e.logger.Error("Failed to stop coordinator", "error", err)
+			errs = append(errs, err)
+		}
+	}
+
+	if e.execPool != nil {
+		e.execPool.Stop()
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("errors stopping engine: %v", errs)
+	}
+
 	return nil
 }
 

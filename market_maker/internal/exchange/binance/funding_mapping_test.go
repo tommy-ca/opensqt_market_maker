@@ -42,7 +42,8 @@ func TestBinanceExchange_GetFundingRate_Mapping(t *testing.T) {
 	cfg := &config.ExchangeConfig{
 		BaseURL: ts.URL,
 	}
-	ex := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	ex, err := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	require.NoError(t, err)
 
 	rate, err := ex.GetFundingRate(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
@@ -80,7 +81,8 @@ func TestBinanceExchange_GetFundingRates_Mapping(t *testing.T) {
 	cfg := &config.ExchangeConfig{
 		BaseURL: ts.URL,
 	}
-	ex := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	ex, err := NewBinanceExchange(cfg, &mockLogger{}, nil)
+	require.NoError(t, err)
 
 	rates, err := ex.GetFundingRates(context.Background())
 	require.NoError(t, err)

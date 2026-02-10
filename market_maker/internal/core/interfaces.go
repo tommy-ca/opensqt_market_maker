@@ -114,14 +114,22 @@ type IFundingMonitor interface {
 
 // IStrategy defines the interface for trading strategy logic
 type IStrategy interface {
-	CalculateActions(ctx context.Context, slots map[string]*InventorySlot, anchorPrice decimal.Decimal, currentPrice decimal.Decimal) ([]*pb.OrderAction, error)
+	CalculateActions(
+		currentPrice decimal.Decimal,
+		anchorPrice decimal.Decimal,
+		atr decimal.Decimal,
+		volatilityFactor float64,
+		isRiskTriggered bool,
+		regime pb.MarketRegime,
+		slots []StrategySlot,
+	) []*pb.OrderAction
 }
 
 // IPositionManager defines the interface for position management
 type IPositionManager interface {
 	Initialize(anchorPrice decimal.Decimal) error
+	GetAnchorPrice() decimal.Decimal
 	RestoreState(slots map[string]*pb.InventorySlot) error
-	CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error)
 	ApplyActionResults(results []OrderActionResult) error
 	OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error
 	SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal)
@@ -131,7 +139,6 @@ type IPositionManager interface {
 	GetStrategySlots(target []StrategySlot) []StrategySlot
 	GetSlotCount() int
 	GetSnapshot() *pb.PositionManagerSnapshot
-	CreateReconciliationSnapshot() map[string]*InventorySlot
 	UpdateOrderIndex(orderID int64, clientOID string, slot *InventorySlot)
 	MarkSlotsPending(actions []*pb.OrderAction)
 	ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error

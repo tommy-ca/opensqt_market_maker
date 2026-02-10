@@ -80,7 +80,7 @@ func TestBacktest_DynamicInterval_E2E(t *testing.T) {
 	)
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 	runner := NewBacktestRunner(engine, exch)
 
 	// Initialize
@@ -195,7 +195,7 @@ func TestBacktest_TrendFollowing_E2E(t *testing.T) {
 	)
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 	// runner := NewBacktestRunner(engine, exch) // Not used
 
 	_ = pm.Initialize(decimal.NewFromInt(50000))

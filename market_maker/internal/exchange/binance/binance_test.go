@@ -52,13 +52,16 @@ func TestStartPriceStream(t *testing.T) {
 	cfg.BaseURL = server.URL
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	if err != nil {
@@ -149,13 +152,16 @@ func TestStartOrderStream(t *testing.T) {
 	// wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 	cfg := &config.ExchangeConfig{APIKey: "test", SecretKey: "test", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	if err != nil {
@@ -197,7 +203,10 @@ func TestPlaceOrder(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",
@@ -246,9 +255,12 @@ func TestCancelOrder(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
-	err := exchange.CancelOrder(context.Background(), "BTCUSDT", 12345, false)
+	err = exchange.CancelOrder(context.Background(), "BTCUSDT", 12345, false)
 	if err != nil {
 		t.Fatalf("CancelOrder failed: %v", err)
 	}
@@ -280,7 +292,10 @@ func TestGetAccount(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	acc, err := exchange.GetAccount(context.Background())
 	if err != nil {
@@ -301,10 +316,13 @@ func TestGetAccount(t *testing.T) {
 func TestSignRequest(t *testing.T) {
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret"}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	req, _ := http.NewRequest("GET", "https://fapi.binance.com/fapi/v1/account", nil)
-	err := exchange.SignRequest(req, nil)
+	err = exchange.SignRequest(req, nil)
 	if err != nil {
 		t.Fatalf("SignRequest failed: %v", err)
 	}
@@ -353,7 +371,10 @@ func TestGetSymbolInfo(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 	ctx := context.Background()
 	symbol := "BTCUSDT"
 
@@ -404,7 +425,10 @@ func TestBatchPlaceOrders(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	reqs := []*pb.PlaceOrderRequest{
 		{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY, Type: pb.OrderType_ORDER_TYPE_LIMIT, Quantity: pbu.FromGoDecimal(decimal.NewFromInt(1)), Price: pbu.FromGoDecimal(decimal.NewFromInt(45000))},
@@ -448,9 +472,12 @@ func TestBatchCancelOrders(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
-	err := exchange.BatchCancelOrders(context.Background(), "BTCUSDT", []int64{1001, 1002}, false)
+	err = exchange.BatchCancelOrders(context.Background(), "BTCUSDT", []int64{1001, 1002}, false)
 	if err != nil {
 		t.Fatalf("BatchCancelOrders failed: %v", err)
 	}

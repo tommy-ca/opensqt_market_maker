@@ -50,6 +50,10 @@ func NewDBOSGridEngine(
 	return e
 }
 
+func (e *DBOSGridEngine) GetCoordinator() *GridCoordinator {
+	return e.coordinator
+}
+
 func (e *DBOSGridEngine) Start(ctx context.Context) error {
 	e.logger.Info("Starting DBOS Grid Engine")
 	if err := e.coordinator.Start(ctx); err != nil {

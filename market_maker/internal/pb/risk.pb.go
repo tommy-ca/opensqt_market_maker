@@ -1414,11 +1414,291 @@ func (x *CloseCircuitBreakerResponse) GetSuccess() bool {
 	return false
 }
 
+type GetRegimeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRegimeRequest) Reset() {
+	*x = GetRegimeRequest{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRegimeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRegimeRequest) ProtoMessage() {}
+
+func (x *GetRegimeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRegimeRequest.ProtoReflect.Descriptor instead.
+func (*GetRegimeRequest) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *GetRegimeRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+type GetRegimeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Regime        MarketRegime           `protobuf:"varint,1,opt,name=regime,proto3,enum=opensqt.market_maker.v1.MarketRegime" json:"regime,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRegimeResponse) Reset() {
+	*x = GetRegimeResponse{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRegimeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRegimeResponse) ProtoMessage() {}
+
+func (x *GetRegimeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRegimeResponse.ProtoReflect.Descriptor instead.
+func (*GetRegimeResponse) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *GetRegimeResponse) GetRegime() MarketRegime {
+	if x != nil {
+		return x.Regime
+	}
+	return MarketRegime_MARKET_REGIME_UNSPECIFIED
+}
+
+type SetStrategyIDRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StrategyId    string                 `protobuf:"bytes,1,opt,name=strategy_id,json=strategyId,proto3" json:"strategy_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetStrategyIDRequest) Reset() {
+	*x = SetStrategyIDRequest{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetStrategyIDRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetStrategyIDRequest) ProtoMessage() {}
+
+func (x *SetStrategyIDRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetStrategyIDRequest.ProtoReflect.Descriptor instead.
+func (*SetStrategyIDRequest) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *SetStrategyIDRequest) GetStrategyId() string {
+	if x != nil {
+		return x.StrategyId
+	}
+	return ""
+}
+
+type SetStrategyIDResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Success            bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	PreviousStrategyId string                 `protobuf:"bytes,2,opt,name=previous_strategy_id,json=previousStrategyId,proto3" json:"previous_strategy_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SetStrategyIDResponse) Reset() {
+	*x = SetStrategyIDResponse{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetStrategyIDResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetStrategyIDResponse) ProtoMessage() {}
+
+func (x *SetStrategyIDResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetStrategyIDResponse.ProtoReflect.Descriptor instead.
+func (*SetStrategyIDResponse) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *SetStrategyIDResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SetStrategyIDResponse) GetPreviousStrategyId() string {
+	if x != nil {
+		return x.PreviousStrategyId
+	}
+	return ""
+}
+
+type UpdateFromIndicatorsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rsi           float64                `protobuf:"fixed64,1,opt,name=rsi,proto3" json:"rsi,omitempty"`
+	TrendScore    float64                `protobuf:"fixed64,2,opt,name=trend_score,json=trendScore,proto3" json:"trend_score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateFromIndicatorsRequest) Reset() {
+	*x = UpdateFromIndicatorsRequest{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateFromIndicatorsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateFromIndicatorsRequest) ProtoMessage() {}
+
+func (x *UpdateFromIndicatorsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateFromIndicatorsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateFromIndicatorsRequest) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *UpdateFromIndicatorsRequest) GetRsi() float64 {
+	if x != nil {
+		return x.Rsi
+	}
+	return 0
+}
+
+func (x *UpdateFromIndicatorsRequest) GetTrendScore() float64 {
+	if x != nil {
+		return x.TrendScore
+	}
+	return 0
+}
+
+type UpdateFromIndicatorsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateFromIndicatorsResponse) Reset() {
+	*x = UpdateFromIndicatorsResponse{}
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateFromIndicatorsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateFromIndicatorsResponse) ProtoMessage() {}
+
+func (x *UpdateFromIndicatorsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_risk_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateFromIndicatorsResponse.ProtoReflect.Descriptor instead.
+func (*UpdateFromIndicatorsResponse) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_risk_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *UpdateFromIndicatorsResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_opensqt_market_maker_v1_risk_proto protoreflect.FileDescriptor
 
 const file_opensqt_market_maker_v1_risk_proto_rawDesc = "" +
 	"\n" +
-	"\"opensqt/market_maker/v1/risk.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\"1\n" +
+	"\"opensqt/market_maker/v1/risk.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\x1a#opensqt/market_maker/v1/types.proto\"1\n" +
 	"\x15GetRiskMetricsRequest\x12\x18\n" +
 	"\asymbols\x18\x01 \x03(\tR\asymbols\"^\n" +
 	"\x16GetRiskMetricsResponse\x12D\n" +
@@ -1518,19 +1798,37 @@ const file_opensqt_market_maker_v1_risk_proto_rawDesc = "" +
 	"\x1aCloseCircuitBreakerRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"7\n" +
 	"\x1bCloseCircuitBreakerResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\x87\n" +
-	"\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"*\n" +
+	"\x10GetRegimeRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"R\n" +
+	"\x11GetRegimeResponse\x12=\n" +
+	"\x06regime\x18\x01 \x01(\x0e2%.opensqt.market_maker.v1.MarketRegimeR\x06regime\"7\n" +
+	"\x14SetStrategyIDRequest\x12\x1f\n" +
+	"\vstrategy_id\x18\x01 \x01(\tR\n" +
+	"strategyId\"c\n" +
+	"\x15SetStrategyIDResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x120\n" +
+	"\x14previous_strategy_id\x18\x02 \x01(\tR\x12previousStrategyId\"P\n" +
+	"\x1bUpdateFromIndicatorsRequest\x12\x10\n" +
+	"\x03rsi\x18\x01 \x01(\x01R\x03rsi\x12\x1f\n" +
+	"\vtrend_score\x18\x02 \x01(\x01R\n" +
+	"trendScore\"8\n" +
+	"\x1cUpdateFromIndicatorsResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xe1\f\n" +
 	"\vRiskService\x12q\n" +
 	"\x0eGetRiskMetrics\x12..opensqt.market_maker.v1.GetRiskMetricsRequest\x1a/.opensqt.market_maker.v1.GetRiskMetricsResponse\x12z\n" +
 	"\x11GetPositionLimits\x121.opensqt.market_maker.v1.GetPositionLimitsRequest\x1a2.opensqt.market_maker.v1.GetPositionLimitsResponse\x12\x83\x01\n" +
 	"\x14UpdatePositionLimits\x124.opensqt.market_maker.v1.UpdatePositionLimitsRequest\x1a5.opensqt.market_maker.v1.UpdatePositionLimitsResponse\x12h\n" +
-	"\vGetExposure\x12+.opensqt.market_maker.v1.GetExposureRequest\x1a,.opensqt.market_maker.v1.GetExposureResponse\x12p\n" +
+	"\vGetExposure\x12+.opensqt.market_maker.v1.GetExposureRequest\x1a,.opensqt.market_maker.v1.GetExposureResponse\x12b\n" +
+	"\tGetRegime\x12).opensqt.market_maker.v1.GetRegimeRequest\x1a*.opensqt.market_maker.v1.GetRegimeResponse\x12p\n" +
 	"\x13SubscribeRiskAlerts\x123.opensqt.market_maker.v1.SubscribeRiskAlertsRequest\x1a\".opensqt.market_maker.v1.RiskAlert0\x01\x12\x86\x01\n" +
 	"\x15TriggerReconciliation\x125.opensqt.market_maker.v1.TriggerReconciliationRequest\x1a6.opensqt.market_maker.v1.TriggerReconciliationResponse\x12\x8c\x01\n" +
 	"\x17GetReconciliationStatus\x127.opensqt.market_maker.v1.GetReconciliationStatusRequest\x1a8.opensqt.market_maker.v1.GetReconciliationStatusResponse\x12\x8c\x01\n" +
 	"\x17GetCircuitBreakerStatus\x127.opensqt.market_maker.v1.GetCircuitBreakerStatusRequest\x1a8.opensqt.market_maker.v1.GetCircuitBreakerStatusResponse\x12}\n" +
 	"\x12OpenCircuitBreaker\x122.opensqt.market_maker.v1.OpenCircuitBreakerRequest\x1a3.opensqt.market_maker.v1.OpenCircuitBreakerResponse\x12\x80\x01\n" +
-	"\x13CloseCircuitBreaker\x123.opensqt.market_maker.v1.CloseCircuitBreakerRequest\x1a4.opensqt.market_maker.v1.CloseCircuitBreakerResponseB\xbc\x01\n" +
+	"\x13CloseCircuitBreaker\x123.opensqt.market_maker.v1.CloseCircuitBreakerRequest\x1a4.opensqt.market_maker.v1.CloseCircuitBreakerResponse\x12n\n" +
+	"\rSetStrategyID\x12-.opensqt.market_maker.v1.SetStrategyIDRequest\x1a..opensqt.market_maker.v1.SetStrategyIDResponse\x12\x83\x01\n" +
+	"\x14UpdateFromIndicators\x124.opensqt.market_maker.v1.UpdateFromIndicatorsRequest\x1a5.opensqt.market_maker.v1.UpdateFromIndicatorsResponseB\xbc\x01\n" +
 	"\x1bcom.opensqt.market_maker.v1B\tRiskProtoP\x01Z\x18market_maker/internal/pb\xa2\x02\x03OMX\xaa\x02\x16Opensqt.MarketMaker.V1\xca\x02\x16Opensqt\\MarketMaker\\V1\xe2\x02\"Opensqt\\MarketMaker\\V1\\GPBMetadata\xea\x02\x18Opensqt::MarketMaker::V1b\x06proto3"
 
 var (
@@ -1545,7 +1843,7 @@ func file_opensqt_market_maker_v1_risk_proto_rawDescGZIP() []byte {
 	return file_opensqt_market_maker_v1_risk_proto_rawDescData
 }
 
-var file_opensqt_market_maker_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_opensqt_market_maker_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_opensqt_market_maker_v1_risk_proto_goTypes = []any{
 	(*GetRiskMetricsRequest)(nil),           // 0: opensqt.market_maker.v1.GetRiskMetricsRequest
 	(*GetRiskMetricsResponse)(nil),          // 1: opensqt.market_maker.v1.GetRiskMetricsResponse
@@ -1571,63 +1869,77 @@ var file_opensqt_market_maker_v1_risk_proto_goTypes = []any{
 	(*OpenCircuitBreakerResponse)(nil),      // 21: opensqt.market_maker.v1.OpenCircuitBreakerResponse
 	(*CloseCircuitBreakerRequest)(nil),      // 22: opensqt.market_maker.v1.CloseCircuitBreakerRequest
 	(*CloseCircuitBreakerResponse)(nil),     // 23: opensqt.market_maker.v1.CloseCircuitBreakerResponse
-	nil,                                     // 24: opensqt.market_maker.v1.RiskAlert.MetadataEntry
-	(*decimal.Decimal)(nil),                 // 25: google.type.Decimal
+	(*GetRegimeRequest)(nil),                // 24: opensqt.market_maker.v1.GetRegimeRequest
+	(*GetRegimeResponse)(nil),               // 25: opensqt.market_maker.v1.GetRegimeResponse
+	(*SetStrategyIDRequest)(nil),            // 26: opensqt.market_maker.v1.SetStrategyIDRequest
+	(*SetStrategyIDResponse)(nil),           // 27: opensqt.market_maker.v1.SetStrategyIDResponse
+	(*UpdateFromIndicatorsRequest)(nil),     // 28: opensqt.market_maker.v1.UpdateFromIndicatorsRequest
+	(*UpdateFromIndicatorsResponse)(nil),    // 29: opensqt.market_maker.v1.UpdateFromIndicatorsResponse
+	nil,                                     // 30: opensqt.market_maker.v1.RiskAlert.MetadataEntry
+	(*decimal.Decimal)(nil),                 // 31: google.type.Decimal
+	(MarketRegime)(0),                       // 32: opensqt.market_maker.v1.MarketRegime
 }
 var file_opensqt_market_maker_v1_risk_proto_depIdxs = []int32{
 	2,  // 0: opensqt.market_maker.v1.GetRiskMetricsResponse.metrics:type_name -> opensqt.market_maker.v1.SymbolRiskMetrics
-	25, // 1: opensqt.market_maker.v1.SymbolRiskMetrics.position_size:type_name -> google.type.Decimal
-	25, // 2: opensqt.market_maker.v1.SymbolRiskMetrics.notional_value:type_name -> google.type.Decimal
-	25, // 3: opensqt.market_maker.v1.SymbolRiskMetrics.unrealized_pnl:type_name -> google.type.Decimal
-	25, // 4: opensqt.market_maker.v1.SymbolRiskMetrics.leverage:type_name -> google.type.Decimal
-	25, // 5: opensqt.market_maker.v1.SymbolRiskMetrics.risk_score:type_name -> google.type.Decimal
-	25, // 6: opensqt.market_maker.v1.SymbolRiskMetrics.last_price:type_name -> google.type.Decimal
-	25, // 7: opensqt.market_maker.v1.GetPositionLimitsResponse.max_position_size:type_name -> google.type.Decimal
-	25, // 8: opensqt.market_maker.v1.GetPositionLimitsResponse.max_notional_value:type_name -> google.type.Decimal
-	25, // 9: opensqt.market_maker.v1.GetPositionLimitsResponse.max_leverage:type_name -> google.type.Decimal
-	25, // 10: opensqt.market_maker.v1.GetPositionLimitsResponse.max_order_size:type_name -> google.type.Decimal
-	25, // 11: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_position_size:type_name -> google.type.Decimal
-	25, // 12: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_notional_value:type_name -> google.type.Decimal
-	25, // 13: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_leverage:type_name -> google.type.Decimal
-	25, // 14: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_order_size:type_name -> google.type.Decimal
-	25, // 15: opensqt.market_maker.v1.GetExposureResponse.total_notional:type_name -> google.type.Decimal
-	25, // 16: opensqt.market_maker.v1.GetExposureResponse.total_unrealized_pnl:type_name -> google.type.Decimal
-	25, // 17: opensqt.market_maker.v1.GetExposureResponse.portfolio_leverage:type_name -> google.type.Decimal
+	31, // 1: opensqt.market_maker.v1.SymbolRiskMetrics.position_size:type_name -> google.type.Decimal
+	31, // 2: opensqt.market_maker.v1.SymbolRiskMetrics.notional_value:type_name -> google.type.Decimal
+	31, // 3: opensqt.market_maker.v1.SymbolRiskMetrics.unrealized_pnl:type_name -> google.type.Decimal
+	31, // 4: opensqt.market_maker.v1.SymbolRiskMetrics.leverage:type_name -> google.type.Decimal
+	31, // 5: opensqt.market_maker.v1.SymbolRiskMetrics.risk_score:type_name -> google.type.Decimal
+	31, // 6: opensqt.market_maker.v1.SymbolRiskMetrics.last_price:type_name -> google.type.Decimal
+	31, // 7: opensqt.market_maker.v1.GetPositionLimitsResponse.max_position_size:type_name -> google.type.Decimal
+	31, // 8: opensqt.market_maker.v1.GetPositionLimitsResponse.max_notional_value:type_name -> google.type.Decimal
+	31, // 9: opensqt.market_maker.v1.GetPositionLimitsResponse.max_leverage:type_name -> google.type.Decimal
+	31, // 10: opensqt.market_maker.v1.GetPositionLimitsResponse.max_order_size:type_name -> google.type.Decimal
+	31, // 11: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_position_size:type_name -> google.type.Decimal
+	31, // 12: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_notional_value:type_name -> google.type.Decimal
+	31, // 13: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_leverage:type_name -> google.type.Decimal
+	31, // 14: opensqt.market_maker.v1.UpdatePositionLimitsRequest.max_order_size:type_name -> google.type.Decimal
+	31, // 15: opensqt.market_maker.v1.GetExposureResponse.total_notional:type_name -> google.type.Decimal
+	31, // 16: opensqt.market_maker.v1.GetExposureResponse.total_unrealized_pnl:type_name -> google.type.Decimal
+	31, // 17: opensqt.market_maker.v1.GetExposureResponse.portfolio_leverage:type_name -> google.type.Decimal
 	9,  // 18: opensqt.market_maker.v1.GetExposureResponse.exposures:type_name -> opensqt.market_maker.v1.SymbolExposure
-	25, // 19: opensqt.market_maker.v1.SymbolExposure.notional_value:type_name -> google.type.Decimal
-	25, // 20: opensqt.market_maker.v1.SymbolExposure.percentage_of_portfolio:type_name -> google.type.Decimal
-	24, // 21: opensqt.market_maker.v1.RiskAlert.metadata:type_name -> opensqt.market_maker.v1.RiskAlert.MetadataEntry
+	31, // 19: opensqt.market_maker.v1.SymbolExposure.notional_value:type_name -> google.type.Decimal
+	31, // 20: opensqt.market_maker.v1.SymbolExposure.percentage_of_portfolio:type_name -> google.type.Decimal
+	30, // 21: opensqt.market_maker.v1.RiskAlert.metadata:type_name -> opensqt.market_maker.v1.RiskAlert.MetadataEntry
 	16, // 22: opensqt.market_maker.v1.GetReconciliationStatusResponse.results:type_name -> opensqt.market_maker.v1.ReconciliationResult
-	25, // 23: opensqt.market_maker.v1.ReconciliationResult.local_position:type_name -> google.type.Decimal
-	25, // 24: opensqt.market_maker.v1.ReconciliationResult.exchange_position:type_name -> google.type.Decimal
-	25, // 25: opensqt.market_maker.v1.ReconciliationResult.divergence:type_name -> google.type.Decimal
+	31, // 23: opensqt.market_maker.v1.ReconciliationResult.local_position:type_name -> google.type.Decimal
+	31, // 24: opensqt.market_maker.v1.ReconciliationResult.exchange_position:type_name -> google.type.Decimal
+	31, // 25: opensqt.market_maker.v1.ReconciliationResult.divergence:type_name -> google.type.Decimal
 	19, // 26: opensqt.market_maker.v1.GetCircuitBreakerStatusResponse.status:type_name -> opensqt.market_maker.v1.CircuitBreakerStatus
-	25, // 27: opensqt.market_maker.v1.CircuitBreakerStatus.total_pnl:type_name -> google.type.Decimal
-	0,  // 28: opensqt.market_maker.v1.RiskService.GetRiskMetrics:input_type -> opensqt.market_maker.v1.GetRiskMetricsRequest
-	3,  // 29: opensqt.market_maker.v1.RiskService.GetPositionLimits:input_type -> opensqt.market_maker.v1.GetPositionLimitsRequest
-	5,  // 30: opensqt.market_maker.v1.RiskService.UpdatePositionLimits:input_type -> opensqt.market_maker.v1.UpdatePositionLimitsRequest
-	7,  // 31: opensqt.market_maker.v1.RiskService.GetExposure:input_type -> opensqt.market_maker.v1.GetExposureRequest
-	10, // 32: opensqt.market_maker.v1.RiskService.SubscribeRiskAlerts:input_type -> opensqt.market_maker.v1.SubscribeRiskAlertsRequest
-	12, // 33: opensqt.market_maker.v1.RiskService.TriggerReconciliation:input_type -> opensqt.market_maker.v1.TriggerReconciliationRequest
-	14, // 34: opensqt.market_maker.v1.RiskService.GetReconciliationStatus:input_type -> opensqt.market_maker.v1.GetReconciliationStatusRequest
-	17, // 35: opensqt.market_maker.v1.RiskService.GetCircuitBreakerStatus:input_type -> opensqt.market_maker.v1.GetCircuitBreakerStatusRequest
-	20, // 36: opensqt.market_maker.v1.RiskService.OpenCircuitBreaker:input_type -> opensqt.market_maker.v1.OpenCircuitBreakerRequest
-	22, // 37: opensqt.market_maker.v1.RiskService.CloseCircuitBreaker:input_type -> opensqt.market_maker.v1.CloseCircuitBreakerRequest
-	1,  // 38: opensqt.market_maker.v1.RiskService.GetRiskMetrics:output_type -> opensqt.market_maker.v1.GetRiskMetricsResponse
-	4,  // 39: opensqt.market_maker.v1.RiskService.GetPositionLimits:output_type -> opensqt.market_maker.v1.GetPositionLimitsResponse
-	6,  // 40: opensqt.market_maker.v1.RiskService.UpdatePositionLimits:output_type -> opensqt.market_maker.v1.UpdatePositionLimitsResponse
-	8,  // 41: opensqt.market_maker.v1.RiskService.GetExposure:output_type -> opensqt.market_maker.v1.GetExposureResponse
-	11, // 42: opensqt.market_maker.v1.RiskService.SubscribeRiskAlerts:output_type -> opensqt.market_maker.v1.RiskAlert
-	13, // 43: opensqt.market_maker.v1.RiskService.TriggerReconciliation:output_type -> opensqt.market_maker.v1.TriggerReconciliationResponse
-	15, // 44: opensqt.market_maker.v1.RiskService.GetReconciliationStatus:output_type -> opensqt.market_maker.v1.GetReconciliationStatusResponse
-	18, // 45: opensqt.market_maker.v1.RiskService.GetCircuitBreakerStatus:output_type -> opensqt.market_maker.v1.GetCircuitBreakerStatusResponse
-	21, // 46: opensqt.market_maker.v1.RiskService.OpenCircuitBreaker:output_type -> opensqt.market_maker.v1.OpenCircuitBreakerResponse
-	23, // 47: opensqt.market_maker.v1.RiskService.CloseCircuitBreaker:output_type -> opensqt.market_maker.v1.CloseCircuitBreakerResponse
-	38, // [38:48] is the sub-list for method output_type
-	28, // [28:38] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	31, // 27: opensqt.market_maker.v1.CircuitBreakerStatus.total_pnl:type_name -> google.type.Decimal
+	32, // 28: opensqt.market_maker.v1.GetRegimeResponse.regime:type_name -> opensqt.market_maker.v1.MarketRegime
+	0,  // 29: opensqt.market_maker.v1.RiskService.GetRiskMetrics:input_type -> opensqt.market_maker.v1.GetRiskMetricsRequest
+	3,  // 30: opensqt.market_maker.v1.RiskService.GetPositionLimits:input_type -> opensqt.market_maker.v1.GetPositionLimitsRequest
+	5,  // 31: opensqt.market_maker.v1.RiskService.UpdatePositionLimits:input_type -> opensqt.market_maker.v1.UpdatePositionLimitsRequest
+	7,  // 32: opensqt.market_maker.v1.RiskService.GetExposure:input_type -> opensqt.market_maker.v1.GetExposureRequest
+	24, // 33: opensqt.market_maker.v1.RiskService.GetRegime:input_type -> opensqt.market_maker.v1.GetRegimeRequest
+	10, // 34: opensqt.market_maker.v1.RiskService.SubscribeRiskAlerts:input_type -> opensqt.market_maker.v1.SubscribeRiskAlertsRequest
+	12, // 35: opensqt.market_maker.v1.RiskService.TriggerReconciliation:input_type -> opensqt.market_maker.v1.TriggerReconciliationRequest
+	14, // 36: opensqt.market_maker.v1.RiskService.GetReconciliationStatus:input_type -> opensqt.market_maker.v1.GetReconciliationStatusRequest
+	17, // 37: opensqt.market_maker.v1.RiskService.GetCircuitBreakerStatus:input_type -> opensqt.market_maker.v1.GetCircuitBreakerStatusRequest
+	20, // 38: opensqt.market_maker.v1.RiskService.OpenCircuitBreaker:input_type -> opensqt.market_maker.v1.OpenCircuitBreakerRequest
+	22, // 39: opensqt.market_maker.v1.RiskService.CloseCircuitBreaker:input_type -> opensqt.market_maker.v1.CloseCircuitBreakerRequest
+	26, // 40: opensqt.market_maker.v1.RiskService.SetStrategyID:input_type -> opensqt.market_maker.v1.SetStrategyIDRequest
+	28, // 41: opensqt.market_maker.v1.RiskService.UpdateFromIndicators:input_type -> opensqt.market_maker.v1.UpdateFromIndicatorsRequest
+	1,  // 42: opensqt.market_maker.v1.RiskService.GetRiskMetrics:output_type -> opensqt.market_maker.v1.GetRiskMetricsResponse
+	4,  // 43: opensqt.market_maker.v1.RiskService.GetPositionLimits:output_type -> opensqt.market_maker.v1.GetPositionLimitsResponse
+	6,  // 44: opensqt.market_maker.v1.RiskService.UpdatePositionLimits:output_type -> opensqt.market_maker.v1.UpdatePositionLimitsResponse
+	8,  // 45: opensqt.market_maker.v1.RiskService.GetExposure:output_type -> opensqt.market_maker.v1.GetExposureResponse
+	25, // 46: opensqt.market_maker.v1.RiskService.GetRegime:output_type -> opensqt.market_maker.v1.GetRegimeResponse
+	11, // 47: opensqt.market_maker.v1.RiskService.SubscribeRiskAlerts:output_type -> opensqt.market_maker.v1.RiskAlert
+	13, // 48: opensqt.market_maker.v1.RiskService.TriggerReconciliation:output_type -> opensqt.market_maker.v1.TriggerReconciliationResponse
+	15, // 49: opensqt.market_maker.v1.RiskService.GetReconciliationStatus:output_type -> opensqt.market_maker.v1.GetReconciliationStatusResponse
+	18, // 50: opensqt.market_maker.v1.RiskService.GetCircuitBreakerStatus:output_type -> opensqt.market_maker.v1.GetCircuitBreakerStatusResponse
+	21, // 51: opensqt.market_maker.v1.RiskService.OpenCircuitBreaker:output_type -> opensqt.market_maker.v1.OpenCircuitBreakerResponse
+	23, // 52: opensqt.market_maker.v1.RiskService.CloseCircuitBreaker:output_type -> opensqt.market_maker.v1.CloseCircuitBreakerResponse
+	27, // 53: opensqt.market_maker.v1.RiskService.SetStrategyID:output_type -> opensqt.market_maker.v1.SetStrategyIDResponse
+	29, // 54: opensqt.market_maker.v1.RiskService.UpdateFromIndicators:output_type -> opensqt.market_maker.v1.UpdateFromIndicatorsResponse
+	42, // [42:55] is the sub-list for method output_type
+	29, // [29:42] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_opensqt_market_maker_v1_risk_proto_init() }
@@ -1635,13 +1947,14 @@ func file_opensqt_market_maker_v1_risk_proto_init() {
 	if File_opensqt_market_maker_v1_risk_proto != nil {
 		return
 	}
+	file_opensqt_market_maker_v1_types_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opensqt_market_maker_v1_risk_proto_rawDesc), len(file_opensqt_market_maker_v1_risk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

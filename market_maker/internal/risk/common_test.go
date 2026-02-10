@@ -30,13 +30,12 @@ func (m *mockPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	args := m.Called(anchorPrice)
 	return args.Error(0)
 }
+func (m *mockPositionManager) GetAnchorPrice() decimal.Decimal {
+	return decimal.Zero
+}
 func (m *mockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	args := m.Called(slots)
 	return args.Error(0)
-}
-func (m *mockPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	args := m.Called(context.Background(), newPrice)
-	return args.Get(0).([]*pb.OrderAction), args.Error(1)
 }
 func (m *mockPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
 	args := m.Called(results)
@@ -74,13 +73,6 @@ func (m *mockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 		return &pb.PositionManagerSnapshot{Symbol: "BTCUSDT"}
 	}
 	return args.Get(0).(*pb.PositionManagerSnapshot)
-}
-func (m *mockPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return m.slots
-	}
-	return args.Get(0).(map[string]*core.InventorySlot)
 }
 func (m *mockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 	m.Called(orderID, clientOID, slot)

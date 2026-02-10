@@ -63,46 +63,36 @@ func TestSuperPositionManager_RestoreFromExchangePosition(t *testing.T) {
 	}
 }
 
-func TestSuperPositionManager_CalculateAdjustments(t *testing.T) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 3, 3, 2, 3, rm, logger)
-
-	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
-	actions, err := pm.CalculateAdjustments(context.Background(), decimal.NewFromFloat(44999.5))
-	if err != nil {
-		t.Fatalf("Failed to calculate adjustments: %v", err)
-	}
-
-	if len(actions) == 0 {
-		t.Error("No actions were calculated")
-	}
-
-	foundPlace := false
-	for _, a := range actions {
-		if a.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && a.Request.Side == pb.OrderSide_ORDER_SIDE_BUY {
-			foundPlace = true
-			break
-		}
-	}
-	if !foundPlace {
-		t.Error("Expected at least one PLACE action")
-	}
-}
-
 func TestSuperPositionManager_ApplyActionResults(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 2, 2, 2, 3, rm, logger)
 	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 
-	actions, _ := pm.CalculateAdjustments(context.Background(), decimal.NewFromFloat(44999.5))
+	// Manually create actions
+	actions := []*pb.OrderAction{
+		{
+			Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+			Price: pbu.FromGoDecimal(decimal.NewFromFloat(44999.0)),
+			Request: &pb.PlaceOrderRequest{
+				Side:          pb.OrderSide_ORDER_SIDE_BUY,
+				Price:         pbu.FromGoDecimal(decimal.NewFromFloat(44999.0)),
+				ClientOrderId: "test_client_id_1",
+			},
+		},
+	}
 
 	results := make([]core.OrderActionResult, len(actions))
 	for i, a := range actions {
 		results[i] = core.OrderActionResult{
 			Action: a,
-			Order:  &pb.Order{OrderId: int64(1000 + i)},
+			Order: &pb.Order{
+				OrderId:       int64(1000 + i),
+				ClientOrderId: a.Request.ClientOrderId,
+				Side:          a.Request.Side,
+				Price:         a.Request.Price,
+				Status:        pb.OrderStatus_ORDER_STATUS_NEW,
+			},
 		}
 	}
 
@@ -266,116 +256,4 @@ func TestSuperPositionManager_GetSnapshot(t *testing.T) {
 			t.Error("Snapshot slot missing price")
 		}
 	}
-}
-
-func TestSuperPositionManager_DynamicGrid(t *testing.T) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 10.0, 100.0, 5.0, 2, 2, 2, 3, rm, logger)
-
-	_ = pm.Initialize(decimal.NewFromFloat(100.0))
-
-	slots := pm.GetSlots()
-	has90 := false
-	if _, ok := slots["90"]; ok {
-		has90 = true
-	}
-	if _, ok := slots["90.00"]; ok {
-		has90 = true
-	}
-
-	if !has90 {
-		t.Errorf("Expected slot at 90")
-	}
-
-	newPrice := decimal.NewFromFloat(200.0)
-	actions, err := pm.CalculateAdjustments(context.Background(), newPrice)
-	if err != nil {
-		t.Fatalf("CalculateAdjustments failed: %v", err)
-	}
-
-	has190 := false
-	for _, a := range actions {
-		if a.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			price := pbu.ToGoDecimal(a.Price)
-			if price.Equal(decimal.NewFromFloat(190.0)) {
-				has190 = true
-			}
-		}
-	}
-
-	if !has190 {
-		t.Error("Dynamic Grid failed: Did not place order at new level 190.0")
-	}
-
-	currentSlots := pm.GetSlots()
-	if len(currentSlots) != 6 {
-		t.Errorf("Expected 6 slots, got %d", len(currentSlots))
-	}
-}
-
-func BenchmarkCalculateAdjustments(b *testing.B) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 10, 10, 2, 3, rm, logger)
-	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		price := decimal.NewFromFloat(45000.0 + float64(i%20))
-		_, _ = pm.CalculateAdjustments(context.Background(), price)
-	}
-}
-
-func TestSuperPositionManager_CalculateAdjustments_Race(t *testing.T) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	symbol := "BTCUSDT"
-	pm := createTestPM(symbol, 1.0, 30.0, 5.0, 10, 10, 2, 3, rm, logger)
-
-	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	done := make(chan bool)
-
-	// Goroutine 1: Continuously calculate adjustments with varying prices to trigger new slot creation
-	go func() {
-		price := decimal.NewFromFloat(45000.0)
-		for {
-			select {
-			case <-ctx.Done():
-				done <- true
-				return
-			default:
-				_, _ = pm.CalculateAdjustments(ctx, price)
-				price = price.Add(decimal.NewFromFloat(1.0))
-				if price.GreaterThan(decimal.NewFromFloat(45100.0)) {
-					price = decimal.NewFromFloat(45000.0)
-				}
-			}
-		}
-	}()
-
-	// Goroutine 2: Also continuously calculate adjustments
-	go func() {
-		price := decimal.NewFromFloat(44000.0)
-		for {
-			select {
-			case <-ctx.Done():
-				done <- true
-				return
-			default:
-				_, _ = pm.CalculateAdjustments(ctx, price)
-				price = price.Add(decimal.NewFromFloat(1.0))
-				if price.GreaterThan(decimal.NewFromFloat(44100.0)) {
-					price = decimal.NewFromFloat(44000.0)
-				}
-			}
-		}
-	}()
-
-	<-done
-	<-done
 }

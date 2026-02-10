@@ -45,7 +45,7 @@ type SuperPositionManager struct {
 	mu          sync.RWMutex
 
 	// Stats
-	totalSlots  int64
+	// totalSlots removed in favor of len(slots)
 	activeSlots int64
 	realizedPnL decimal.Decimal
 	historyMu   sync.RWMutex
@@ -113,7 +113,9 @@ func (spm *SuperPositionManager) registerMetrics(meter metric.Meter, symbol stri
 	_, _ = meter.Int64ObservableGauge("position_total_slots",
 		metric.WithDescription("Total number of grid slots"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
-			obs.Observe(atomic.LoadInt64(&spm.totalSlots), commonAttrs)
+			spm.mu.RLock()
+			defer spm.mu.RUnlock()
+			obs.Observe(int64(len(spm.slots)), commonAttrs)
 			return nil
 		}))
 
@@ -161,7 +163,6 @@ func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 			OrderFilledQtyDec: decimal.Zero,
 		}
 		spm.slots[roundedPrice.String()] = slot
-		atomic.AddInt64(&spm.totalSlots, 1)
 	}
 
 	for _, price := range sellPrices {
@@ -184,10 +185,15 @@ func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 			OrderFilledQtyDec: decimal.Zero,
 		}
 		spm.slots[roundedPrice.String()] = slot
-		atomic.AddInt64(&spm.totalSlots, 1)
 	}
 
 	return nil
+}
+
+func (spm *SuperPositionManager) GetAnchorPrice() decimal.Decimal {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+	return spm.anchorPrice
 }
 
 func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
@@ -198,7 +204,6 @@ func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot
 	spm.orderMap = make(map[int64]*core.InventorySlot)
 	spm.clientOMap = make(map[string]*core.InventorySlot)
 
-	var totalSlots int64
 	for k, s := range slots {
 		newSlot := &core.InventorySlot{
 			InventorySlot:     s,
@@ -215,9 +220,7 @@ func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot
 		if newSlot.ClientOid != "" {
 			spm.clientOMap[newSlot.ClientOid] = newSlot
 		}
-		totalSlots++
 	}
-	atomic.StoreInt64(&spm.totalSlots, totalSlots)
 	return nil
 }
 
@@ -296,57 +299,6 @@ func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decim
 
 		allocatedQty = allocatedQty.Add(slotQty)
 	}
-}
-
-// CalculateAdjustments calculates required order adjustments by delegating to the strategy
-func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	if spm.strategy == nil {
-		return nil, fmt.Errorf("strategy not set")
-	}
-
-	// Use optimized slot collection
-	stratSlots := spm.GetStrategySlots(nil)
-
-	spm.mu.RLock()
-	anchorPrice := spm.anchorPrice
-	spm.mu.RUnlock()
-
-	atr := decimal.Zero
-	volFactor := 0.0
-	isTriggered := false
-	regime := pb.MarketRegime_MARKET_REGIME_RANGE
-
-	if spm.monitor != nil {
-		atr = spm.monitor.GetATR(spm.symbol)
-		volFactor = spm.monitor.GetVolatilityFactor(spm.symbol)
-		isTriggered = spm.monitor.IsTriggered()
-		// SimpleEngine doesn't have RegimeMonitor for now, use RANGE
-	}
-
-	actions := spm.strategy.CalculateActions(newPrice, anchorPrice, atr, volFactor, isTriggered, regime, stratSlots)
-
-	// Post-processing: Ensure slots exist for any PLACE actions returned by strategy
-	spm.mu.Lock()
-	defer spm.mu.Unlock()
-
-	for _, action := range actions {
-		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			price := pbu.ToGoDecimal(action.Price)
-			slot := spm.getOrCreateSlotLocked(price)
-
-			slot.Mu.Lock()
-			if action.Request != nil {
-				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
-				slot.OrderPrice = action.Request.Price
-				slot.OrderSide = action.Request.Side
-				slot.ClientOid = action.Request.ClientOrderId
-				spm.clientOMap[slot.ClientOid] = slot
-			}
-			slot.Mu.Unlock()
-		}
-	}
-
-	return actions, nil
 }
 
 func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
@@ -518,7 +470,7 @@ func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	return &pb.PositionManagerSnapshot{
 		Symbol:     spm.symbol,
 		Slots:      pbSlots,
-		TotalSlots: atomic.LoadInt64(&spm.totalSlots),
+		TotalSlots: int64(len(spm.slots)),
 	}
 }
 
@@ -572,18 +524,9 @@ func (spm *SuperPositionManager) CancelAllSellOrders(ctx context.Context) ([]*pb
 }
 
 func (spm *SuperPositionManager) GetSlotCount() int {
-	return int(atomic.LoadInt64(&spm.totalSlots))
-}
-
-func (spm *SuperPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-
-	snap := make(map[string]*core.InventorySlot)
-	for k, v := range spm.slots {
-		snap[k] = v
-	}
-	return snap
+	return len(spm.slots)
 }
 
 func (spm *SuperPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
@@ -602,15 +545,26 @@ func (spm *SuperPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
 	defer spm.mu.Unlock()
 
 	for _, action := range actions {
-		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			continue
-		}
 		priceVal := pbu.ToGoDecimal(action.Price)
 		slot := spm.getOrCreateSlotLocked(priceVal)
 
 		slot.Mu.Lock()
-		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
-			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+				if action.Request != nil {
+					slot.OrderPrice = action.Request.Price
+					slot.OrderSide = action.Request.Side
+					slot.ClientOid = action.Request.ClientOrderId
+					if slot.ClientOid != "" {
+						spm.clientOMap[slot.ClientOid] = slot
+					}
+				}
+			}
+		} else if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED {
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+			}
 		}
 		slot.Mu.Unlock()
 	}
@@ -702,7 +656,6 @@ func (spm *SuperPositionManager) getOrCreateSlotLocked(price decimal.Decimal) *c
 		OriginalQtyDec: theoryQty,
 	}
 	spm.slots[key] = s
-	atomic.AddInt64(&spm.totalSlots, 1)
 	return s
 }
 

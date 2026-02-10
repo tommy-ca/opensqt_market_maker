@@ -81,6 +81,19 @@ func (m *MockOrderExecutor) BatchCancelOrders(ctx context.Context, symbol string
 	return nil
 }
 
+// Execute implements gridengine.IGridExecutor for testing
+func (m *MockOrderExecutor) Execute(ctx context.Context, actions []*pb.OrderAction) {
+	for _, action := range actions {
+		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			if action.Request != nil {
+				_, _ = m.PlaceOrder(ctx, action.Request)
+			}
+		} else {
+			_ = m.BatchCancelOrders(ctx, action.Symbol, []int64{action.OrderId}, false)
+		}
+	}
+}
+
 // MockPositionManager implements core.IPositionManager for testing
 type MockPositionManager struct {
 	slots map[string]*core.InventorySlot
@@ -97,6 +110,10 @@ func (m *MockPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	return nil
 }
 
+func (m *MockPositionManager) GetAnchorPrice() decimal.Decimal {
+	return decimal.Zero
+}
+
 func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,10 +121,6 @@ func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) e
 		m.slots[k] = &core.InventorySlot{InventorySlot: v}
 	}
 	return nil
-}
-
-func (m *MockPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	return nil, nil
 }
 
 func (m *MockPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
@@ -221,10 +234,6 @@ func (m *MockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	return &pb.PositionManagerSnapshot{
 		Slots: pbSlots,
 	}
-}
-
-func (m *MockPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	return m.GetSlots()
 }
 
 func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {

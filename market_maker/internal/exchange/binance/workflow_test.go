@@ -49,7 +49,8 @@ func TestBinanceWorkflow_IdempotentPlaceOrder(t *testing.T) {
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",

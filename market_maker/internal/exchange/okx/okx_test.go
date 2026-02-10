@@ -59,13 +59,16 @@ func TestOKXStartPriceStream(t *testing.T) {
 	cfg := &config.ExchangeConfig{BaseURL: wsURL} // Helper to inject WS URL
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTC-USDT-SWAP"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTC-USDT-SWAP"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	if err != nil {
@@ -158,13 +161,16 @@ func TestOKXStartOrderStream(t *testing.T) {
 	cfg := &config.ExchangeConfig{APIKey: "k", SecretKey: "s", Passphrase: "p", BaseURL: wsURL}
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	if err != nil {
@@ -216,7 +222,10 @@ func TestOKXPlaceOrder(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTC-USDT-SWAP",
@@ -259,9 +268,12 @@ func TestOKXCancelOrder(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "key", SecretKey: "secret", Passphrase: "pass", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
-	err := exchange.CancelOrder(context.Background(), "BTC-USDT-SWAP", 123456, false)
+	err = exchange.CancelOrder(context.Background(), "BTC-USDT-SWAP", 123456, false)
 	if err != nil {
 		t.Fatalf("CancelOrder failed: %v", err)
 	}
@@ -295,7 +307,10 @@ func TestOKXGetAccount(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "key", SecretKey: "secret", Passphrase: "pass", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	acc, err := exchange.GetAccount(context.Background())
 	if err != nil {
@@ -314,7 +329,10 @@ func TestOKXSignRequest(t *testing.T) {
 		Passphrase: "test_passphrase",
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	req, _ := http.NewRequest("GET", "https://www.okx.com/api/v5/account/balance", nil)
 
@@ -322,7 +340,7 @@ func TestOKXSignRequest(t *testing.T) {
 	// I'll test that headers are present and format is correct.
 	// For exact signature verification, I would need to mock time or split the logic.
 
-	err := exchange.SignRequest(req, "")
+	err = exchange.SignRequest(req, "")
 	if err != nil {
 		t.Fatalf("SignRequest failed: %v", err)
 	}
@@ -374,7 +392,10 @@ func TestOKXGetSymbolInfo(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("DEBUG")
-	ex := NewOKXExchange(cfg, logger)
+	ex, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 	ctx := context.Background()
 
 	info, err := ex.GetSymbolInfo(ctx, "BTC-USDT-SWAP")
@@ -419,7 +440,10 @@ func TestOKXBatchPlaceOrders(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
 	reqs := []*pb.PlaceOrderRequest{
 		{Symbol: "BTC-USDT-SWAP", Side: pb.OrderSide_ORDER_SIDE_BUY, Type: pb.OrderType_ORDER_TYPE_LIMIT, Quantity: pbu.FromGoDecimal(decimal.NewFromInt(1)), Price: pbu.FromGoDecimal(decimal.NewFromInt(45000)), ClientOrderId: "oid1"},
@@ -458,9 +482,12 @@ func TestOKXBatchCancelOrders(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewOKXExchange(cfg, logger)
+	exchange, err := NewOKXExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewOKXExchange failed: %v", err)
+	}
 
-	err := exchange.BatchCancelOrders(context.Background(), "BTC-USDT-SWAP", []int64{2001, 2002}, false)
+	err = exchange.BatchCancelOrders(context.Background(), "BTC-USDT-SWAP", []int64{2001, 2002}, false)
 	if err != nil {
 		t.Fatalf("BatchCancelOrders failed: %v", err)
 	}

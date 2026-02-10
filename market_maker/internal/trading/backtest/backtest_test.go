@@ -44,7 +44,7 @@ func TestBacktest_BasicFlow(t *testing.T) {
 	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 
 	runner := NewBacktestRunner(engine, exch)
 
@@ -125,7 +125,7 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 	runner := NewBacktestRunner(engine, exch)
 
 	// 2. Define test prices: Move price from 45000 -> 45200 (20 intervals)
