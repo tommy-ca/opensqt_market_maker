@@ -40,7 +40,14 @@ type BinanceSpotExchange struct {
 }
 
 // NewBinanceSpotExchange creates a new Binance Spot exchange instance
-func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) *BinanceSpotExchange {
+func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) (*BinanceSpotExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("binance spot base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("binance_spot", cfg, logger)
 	e := &BinanceSpotExchange{
 		BaseAdapter: b,
@@ -51,7 +58,7 @@ func NewBinanceSpotExchange(cfg *config.ExchangeConfig, logger core.ILogger, poo
 	b.SetSignRequest(e.SignRequest)
 	b.SetParseError(e.parseError)
 
-	return e
+	return e, nil
 }
 
 func (e *BinanceSpotExchange) GetName() string {
@@ -637,7 +644,7 @@ func (e *BinanceSpotExchange) GetPositions(ctx context.Context, symbol string) (
 	// Hacky: Try to guess asset from symbol if not available from Info
 	// Better: Use FetchExchangeInfo to get BaseAsset
 	info, err := e.GetSymbolInfo(ctx, symbol)
-	targetAsset := symbol
+	var targetAsset string
 	if err == nil {
 		targetAsset = info.BaseAsset
 	} else {
@@ -759,7 +766,7 @@ func (e *BinanceSpotExchange) StartOrderStream(ctx context.Context, callback fun
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(&update) })
+			_ = e.pool.Submit(func() { callback(&update) })
 		} else {
 			callback(&update)
 		}
@@ -811,7 +818,7 @@ func (e *BinanceSpotExchange) StartPriceStream(ctx context.Context, symbols []st
 			}
 
 			if e.pool != nil {
-				e.pool.Submit(func() { callback(&change) })
+				_ = e.pool.Submit(func() { callback(&change) })
 			} else {
 				callback(&change)
 			}

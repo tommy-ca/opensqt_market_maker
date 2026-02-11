@@ -30,13 +30,15 @@ func (m *mockPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	args := m.Called(anchorPrice)
 	return args.Error(0)
 }
+func (m *mockPositionManager) GetAnchorPrice() decimal.Decimal {
+	return decimal.Zero
+}
+func (m *mockPositionManager) SetAnchorPrice(price decimal.Decimal) {
+	m.Called(price)
+}
 func (m *mockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	args := m.Called(slots)
 	return args.Error(0)
-}
-func (m *mockPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	args := m.Called(context.Background(), newPrice)
-	return args.Get(0).([]*pb.OrderAction), args.Error(1)
 }
 func (m *mockPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
 	args := m.Called(results)
@@ -62,6 +64,9 @@ func (m *mockPositionManager) GetSlots() map[string]*core.InventorySlot {
 	}
 	return args.Get(0).(map[string]*core.InventorySlot)
 }
+func (m *mockPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	return nil
+}
 func (m *mockPositionManager) GetSlotCount() int {
 	return len(m.slots)
 }
@@ -72,15 +77,11 @@ func (m *mockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	}
 	return args.Get(0).(*pb.PositionManagerSnapshot)
 }
-func (m *mockPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return m.slots
-	}
-	return args.Get(0).(map[string]*core.InventorySlot)
-}
 func (m *mockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 	m.Called(orderID, clientOID, slot)
+}
+func (m *mockPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	m.Called(actions)
 }
 func (m *mockPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	args := m.Called(context.Background(), symbol, exchangeSize)
@@ -103,6 +104,9 @@ func (m *mockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 }
 func (m *mockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
+}
+func (m *mockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
+	m.Called(orders, exchangePosition)
 }
 
 type MockExchange struct {

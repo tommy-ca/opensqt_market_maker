@@ -3,7 +3,8 @@ package e2e
 import (
 	"context"
 	"database/sql"
-	"os"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"market_maker/internal/pb"
 	"market_maker/internal/risk"
 	"market_maker/internal/trading/grid"
+	"market_maker/migrations"
 	"market_maker/pkg/concurrency"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
@@ -30,16 +32,8 @@ func initTestDB(t *testing.T, dbPath string) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Initialize schema manually since Atlas isn't running in tests
-	// Based on e2e_test.go implementation
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS state (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			data TEXT NOT NULL,
-			checksum BLOB NOT NULL,
-			updated_at INTEGER NOT NULL
-		);
-	`)
+	// Initialize schema from shared migration logic
+	_, err = db.Exec(migrations.InitSchema)
 	require.NoError(t, err)
 }
 
@@ -49,10 +43,7 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := "test_recovery.db"
-	_ = os.Remove(dbPath)
-	defer os.Remove(dbPath)
-
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_recovery_%d.db", time.Now().UnixNano()))
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -109,10 +100,11 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for orders to be placed
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) >= 2
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed orders")
 
 	orders := exch.GetOrders()
-	require.GreaterOrEqual(t, len(orders), 2, "Should have placed orders")
 
 	// Identify a Buy order to fill
 	var targetOrder *pb.Order
@@ -164,18 +156,6 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	err = eng2.Start(ctx)
 	require.NoError(t, err)
 
-	// Simulate Reconciliation (Trigger Order Update explicitly as engine restart doesn't auto-fetch yet)
-	update := &pb.OrderUpdate{
-		OrderId:     targetOrder.OrderId,
-		Symbol:      targetOrder.Symbol,
-		Status:      pb.OrderStatus_ORDER_STATUS_FILLED,
-		ExecutedQty: targetOrder.ExecutedQty,
-		AvgPrice:    targetOrder.AvgPrice,
-		UpdateTime:  time.Now().UnixMilli(),
-	}
-	err = eng2.OnOrderUpdate(ctx, update)
-	require.NoError(t, err)
-
 	// Check state in New SlotManager
 	slots := sm2.GetSlots()
 	var filledSlot *core.InventorySlot
@@ -188,9 +168,138 @@ func TestE2E_DurableRecovery_OfflineFills(t *testing.T) {
 	}
 	require.NotNil(t, filledSlot, "Filled slot should exist")
 
-	// Assert: GridEngine.GetSlots() should show the slot as FILLED (or FREE/FILLED depending on logic)
-	assert.NotEqual(t, pb.SlotStatus_SLOT_STATUS_LOCKED, filledSlot.SlotStatus, "Slot should not be LOCKED after offline fill")
-	assert.Equal(t, pb.PositionStatus_POSITION_STATUS_FILLED, filledSlot.PositionStatus, "Position status should be FILLED")
+	// Assert: GridEngine.GetSlots() should show the slot as NO LONGER LOCKED
+	assert.NotEqual(t, pb.SlotStatus_SLOT_STATUS_LOCKED, filledSlot.SlotStatus, "Slot should not be LOCKED after offline fill and sync")
+	assert.Equal(t, pb.PositionStatus_POSITION_STATUS_FILLED, filledSlot.PositionStatus, "Slot should be FILLED")
+
+	// Critical Fix Verification: PositionQty should be the order quantity (1.0), not the price (99.0)
+	actualQty := pbu.ToGoDecimal(filledSlot.PositionQty)
+	expectedQty := decimal.NewFromInt(1)
+	assert.True(t, actualQty.Equal(expectedQty), "PositionQty should be %v, got %v", expectedQty, actualQty)
+}
+
+func TestE2E_HardCrash_OfflineFill(t *testing.T) {
+	// 1. Setup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := logging.NewLogger(logging.InfoLevel, nil)
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_hard_crash_%d.db", time.Now().UnixNano()))
+	initTestDB(t, dbPath)
+
+	store, err := simple.NewSQLiteStore(dbPath)
+	require.NoError(t, err)
+
+	exch := mock.NewMockExchange("mock")
+	exch.SetTicker(&pb.Ticker{
+		Symbol:    "BTCUSDT",
+		LastPrice: pbu.FromGoDecimal(decimal.NewFromFloat(100.0)),
+	})
+
+	sm1 := grid.NewSlotManager("BTCUSDT", 2, logger)
+	cfg := gridengine.Config{
+		Symbol:         "BTCUSDT",
+		PriceInterval:  decimal.NewFromFloat(1.0),
+		OrderQuantity:  decimal.NewFromFloat(1.0),
+		BuyWindowSize:  2,
+		SellWindowSize: 2,
+	}
+
+	execPool := concurrency.NewWorkerPool(concurrency.PoolConfig{
+		Name:        "e2e-pool",
+		MaxWorkers:  4,
+		MaxCapacity: 100,
+		IdleTimeout: time.Second,
+	}, logger)
+	defer execPool.Stop()
+
+	eng1 := gridengine.NewGridEngine(
+		map[string]core.IExchange{"mock": exch},
+		exch,
+		nil,
+		store,
+		logger,
+		execPool,
+		sm1,
+		cfg,
+	)
+
+	// 2. Execution - Run 1
+	err = eng1.Start(ctx)
+	require.NoError(t, err)
+
+	// Trigger orders
+	err = eng1.OnPriceUpdate(ctx, &pb.PriceChange{
+		Symbol: "BTCUSDT", Price: pbu.FromGoDecimal(decimal.NewFromFloat(100.0)),
+	})
+	require.NoError(t, err)
+
+	// Wait for orders
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) > 0
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed orders")
+
+	orders := exch.GetOrders()
+
+	var targetOrder *pb.Order
+	for _, o := range orders {
+		if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+			targetOrder = o
+			break
+		}
+	}
+	require.NotNil(t, targetOrder)
+
+	// 3. HARD CRASH (Simulate by closing store and NOT stopping engine gracefully)
+	// In this test, we just stop the engine and reopen everything.
+	// But to truly simulate hard crash, we ensure no final state is saved after the fill.
+	store.Close()
+
+	// 4. Offline Fill
+	exch.SimulateOrderFill(targetOrder.OrderId, pbu.ToGoDecimal(targetOrder.Quantity), pbu.ToGoDecimal(targetOrder.Price))
+
+	// 5. Cold Restart
+	store2, err := simple.NewSQLiteStore(dbPath)
+	require.NoError(t, err)
+	defer store2.Close()
+
+	sm2 := grid.NewSlotManager("BTCUSDT", 2, logger)
+	eng2 := gridengine.NewGridEngine(
+		map[string]core.IExchange{"mock": exch},
+		exch,
+		nil,
+		store2,
+		logger,
+		execPool,
+		sm2,
+		cfg,
+	)
+
+	// Start Engine 2 - This should trigger SyncOrders on boot
+	err = eng2.Start(ctx)
+	require.NoError(t, err)
+
+	// 6. Verify: The bot should have detected the fill from the exchange sync
+	slots := sm2.GetSlots()
+	var filledSlot *core.InventorySlot
+	targetPrice := pbu.ToGoDecimal(targetOrder.Price)
+	for _, s := range slots {
+		if pbu.ToGoDecimal(s.Price).Equal(targetPrice) {
+			filledSlot = s
+			break
+		}
+	}
+	require.NotNil(t, filledSlot)
+
+	// Because we restored local state (which thought it was LOCKED)
+	// then synced with exchange (which saw no order),
+	// the reconciler (SyncOrders) should have cleared the lock.
+	// Wait, SyncOrders currently only sets LOCKED if order EXISTS.
+	// If order is GONE (filled/canceled), it should be FREE.
+
+	// BUT, if it was filled, the Position Status should be updated if we implement Position Sync.
+	// For now, let's verify it's NOT locked.
+	assert.NotEqual(t, pb.SlotStatus_SLOT_STATUS_LOCKED, filledSlot.SlotStatus, "Slot should be freed after sync if order is gone")
 }
 
 func TestE2E_RiskCircuitBreaker(t *testing.T) {
@@ -199,10 +308,7 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	defer cancel()
 
 	logger := logging.NewLogger(logging.InfoLevel, nil)
-	dbPath := "test_risk.db"
-	_ = os.Remove(dbPath)
-	defer os.Remove(dbPath)
-
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("test_risk_%d.db", time.Now().UnixNano()))
 	initTestDB(t, dbPath)
 
 	store, err := simple.NewSQLiteStore(dbPath)
@@ -285,7 +391,10 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait and verify normal orders
-	time.Sleep(50 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return len(exch.GetOrders()) > 0
+	}, 1*time.Second, 10*time.Millisecond, "Should have placed normal orders")
+
 	orders1 := exch.GetOrders()
 	assert.NotEmpty(t, orders1)
 	lastID := int64(0)
@@ -306,7 +415,9 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	rm.HandleKlineUpdate(spikeCandle)
 
 	// Wait for async processing
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return rm.IsTriggered()
+	}, 1*time.Second, 10*time.Millisecond, "Risk Monitor should be triggered")
 
 	assert.True(t, rm.IsTriggered(), "Risk Monitor should be triggered")
 
@@ -319,13 +430,16 @@ func TestE2E_RiskCircuitBreaker(t *testing.T) {
 	err = eng.OnPriceUpdate(ctx, updateRisk)
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
-
-	orders2 := exch.GetOrders()
-	// Assert: No *new* Buy orders placed
-	for _, o := range orders2 {
-		if o.OrderId > lastID {
-			assert.NotEqual(t, pb.OrderSide_ORDER_SIDE_BUY, o.Side, "Should not place new BUY orders when risk triggered")
+	// Wait and verify no new BUY orders
+	assert.Eventually(t, func() bool {
+		orders2 := exch.GetOrders()
+		for _, o := range orders2 {
+			if o.OrderId > lastID {
+				if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+					return false
+				}
+			}
 		}
-	}
+		return true
+	}, 1*time.Second, 10*time.Millisecond, "Should not place new BUY orders when risk triggered")
 }

@@ -35,7 +35,7 @@ func TestReconciler_ReconcileOrders(t *testing.T) {
 	exchange.On("GetOpenOrders", mock.Anything, "BTCUSDT", false).Return([]*pb.Order{}, nil)
 	exchange.On("GetPositions", mock.Anything, "BTCUSDT").Return([]*pb.Position{}, nil)
 
-	pm.On("CreateReconciliationSnapshot").Return(map[string]*core.InventorySlot{
+	pm.On("GetSlots").Return(map[string]*core.InventorySlot{
 		priceVal.String(): slot,
 	})
 	pm.On("OnOrderUpdate", mock.Anything, mock.Anything).Return(nil)
@@ -74,7 +74,7 @@ func TestReconciler_GhostExchangeOrders(t *testing.T) {
 	exchange.On("GetOpenOrders", mock.Anything, "BTCUSDT", false).Return([]*pb.Order{ghostOrder}, nil)
 	exchange.On("GetPositions", mock.Anything, "BTCUSDT").Return([]*pb.Position{}, nil)
 	exchange.On("CancelOrder", mock.Anything, "BTCUSDT", int64(999), false).Return(nil)
-	pm.On("CreateReconciliationSnapshot").Return(make(map[string]*core.InventorySlot))
+	pm.On("GetSlots").Return(make(map[string]*core.InventorySlot))
 
 	_, _ = exchange.PlaceOrder(ctx, req)
 

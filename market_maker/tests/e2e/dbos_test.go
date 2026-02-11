@@ -7,9 +7,9 @@ import (
 	"market_maker/internal/engine/durable"
 	"market_maker/internal/pb"
 	"market_maker/internal/trading/backtest"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
@@ -57,13 +57,16 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 
 	orderExecutor := order.NewOrderExecutor(exch, logger)
 
-	gridStrategy := strategy.NewGridStrategy(
-		symbol, exch.GetName(),
-		decimal.NewFromFloat(10.0),
-		decimal.NewFromFloat(100.0),
-		decimal.NewFromFloat(5.0),
-		5, 5, 2, 3, false, nil, nil, logger,
-	)
+	gridStrategy := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         symbol,
+		PriceInterval:  decimal.NewFromFloat(10.0),
+		OrderQuantity:  decimal.NewFromFloat(100.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+	})
 
 	pm := position.NewSuperPositionManager(
 		symbol, exch.GetName(),
@@ -71,10 +74,10 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 		5, 5, 2, 3, gridStrategy, nil, nil, logger, nil,
 	)
 
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	// We use the workflows directly to simulate DBOS execution
-	w := durable.NewTradingWorkflows(pm, orderExecutor)
+	w := durable.NewTradingWorkflows(pm, orderExecutor, gridStrategy)
 
 	price := pb.PriceChange{
 		Symbol: symbol,
@@ -82,7 +85,11 @@ func TestE2E_DBOS_WorkflowAtomicity(t *testing.T) {
 	}
 
 	// Scenario: Workflow fails AFTER placing order but BEFORE applying results
-	actions, _ := pm.CalculateAdjustments(context.Background(), decimal.NewFromInt(45000))
+	stratSlots := pm.GetStrategySlots(nil)
+	actions := gridStrategy.CalculateActions(decimal.NewFromInt(45000), decimal.NewFromInt(45000), decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, stratSlots)
+
+	// Mark pending manually as the workflow would do it inside RunAsStep
+	pm.MarkSlotsPending(actions)
 
 	// First run fails at the final step
 	mockCtx1 := &e2eMockDBOSContext{

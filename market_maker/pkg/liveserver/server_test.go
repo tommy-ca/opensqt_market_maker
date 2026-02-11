@@ -213,7 +213,7 @@ func TestServerPingPong(t *testing.T) {
 	hub.Broadcast(msg)
 
 	// Should receive the broadcast message
-	ws.SetReadDeadline(time.Now().Add(1 * time.Second))
+	_ = ws.SetReadDeadline(time.Now().Add(1 * time.Second))
 	var received Message
 	err = ws.ReadJSON(&received)
 	require.NoError(t, err)

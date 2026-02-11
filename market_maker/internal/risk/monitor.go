@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"golang.org/x/sync/errgroup"
 )
 
 // RiskMonitor implements the IRiskMonitor interface
@@ -36,7 +37,6 @@ type RiskMonitor struct {
 	// Lifecycle
 	ctx       context.Context
 	cancel    context.CancelFunc
-	wg        sync.WaitGroup
 	mu        sync.RWMutex
 	reportInt time.Duration
 	pool      *concurrency.WorkerPool
@@ -133,21 +133,34 @@ func (rm *RiskMonitor) Start(ctx context.Context) error {
 }
 
 func (rm *RiskMonitor) preloadHistory(ctx context.Context) {
-	for _, symbol := range rm.monitorSymbols {
-		candles, err := rm.exchange.GetHistoricalKlines(ctx, symbol, rm.interval, rm.averageWindow+1)
-		if err != nil {
-			rm.logger.Warn("Failed to preload history", "symbol", symbol, "error", err)
-			continue
-		}
+	g, ctx := errgroup.WithContext(ctx)
 
-		if len(candles) > 0 {
-			stats := rm.symbolStats[symbol]
-			stats.mu.Lock()
-			stats.Candles = candles
-			stats.mu.Unlock()
-			rm.logger.Info("Preloaded history", "symbol", symbol, "count", len(candles))
-		}
+	for _, symbol := range rm.monitorSymbols {
+		symbol := symbol // Capture loop variable
+		g.Go(func() error {
+			candles, err := rm.exchange.GetHistoricalKlines(ctx, symbol, rm.interval, rm.averageWindow+1)
+			if err != nil {
+				rm.logger.Warn("Failed to preload history", "symbol", symbol, "error", err)
+				return nil // Continue despite error
+			}
+
+			if len(candles) > 0 {
+				rm.mu.RLock()
+				stats, exists := rm.symbolStats[symbol]
+				rm.mu.RUnlock()
+
+				if exists {
+					stats.mu.Lock()
+					stats.Candles = candles
+					stats.mu.Unlock()
+					rm.logger.Info("Preloaded history", "symbol", symbol, "count", len(candles))
+				}
+			}
+			return nil
+		})
 	}
+
+	_ = g.Wait()
 }
 
 // Stop stops risk monitoring
@@ -355,7 +368,7 @@ func (rm *RiskMonitor) handleKlineUpdate(candle *pb.Candle) {
 
 	// Update global trigger state
 	if rm.pool != nil {
-		rm.pool.Submit(rm.updateGlobalTriggerState)
+		_ = rm.pool.Submit(rm.updateGlobalTriggerState)
 	} else {
 		go rm.updateGlobalTriggerState()
 	}

@@ -4,9 +4,9 @@ import (
 	"context"
 	simple "market_maker/internal/engine/simple"
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"testing"
 	"time"
@@ -25,17 +25,26 @@ func TestBacktest_BasicFlow(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000) // Unlimited for backtest
 
 	// We'll use a nil risk monitor for simplicity in this test
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest", decimal.NewFromFloat(1.0), decimal.NewFromFloat(10.0), decimal.NewFromFloat(5.0), 5, 5, 2, 3, false, nil, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         "BTCUSDT",
+		PriceInterval:  decimal.NewFromFloat(1.0),
+		OrderQuantity:  decimal.NewFromFloat(10.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+	})
 	pm := position.NewSuperPositionManager(
 		"BTCUSDT", "backtest", 1.0, 10.0, 5.0, 5, 5, 2, 3,
 		strat, nil, nil, logger, nil,
 	)
 
 	// Initial grid setup
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 
 	runner := NewBacktestRunner(engine, exch)
 
@@ -49,8 +58,8 @@ func TestBacktest_BasicFlow(t *testing.T) {
 
 	// 3. Run backtest
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	err := runner.Run(ctx, "BTCUSDT", prices)
@@ -97,17 +106,26 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 	orderExecutor.SetRateLimit(1000000, 1000000)
 
 	// BuyWindow=5, SellWindow=5, Interval=10
-	strat := strategy.NewGridStrategy("BTCUSDT", "backtest", decimal.NewFromFloat(10.0), decimal.NewFromFloat(100.0), decimal.NewFromFloat(5.0), 5, 5, 2, 3, false, nil, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         "BTCUSDT",
+		PriceInterval:  decimal.NewFromFloat(10.0),
+		OrderQuantity:  decimal.NewFromFloat(100.0),
+		MinOrderValue:  decimal.NewFromFloat(5.0),
+		BuyWindowSize:  5,
+		SellWindowSize: 5,
+		PriceDecimals:  2,
+		QtyDecimals:    3,
+	})
 	pm := position.NewSuperPositionManager(
 		"BTCUSDT", "backtest", 10.0, 100.0, 5.0, 5, 5, 2, 3,
 		strat, nil, nil, logger, nil,
 	)
 
 	// Initial grid setup at 45000
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = pm.Initialize(decimal.NewFromInt(45000))
 
 	store := simple.NewMemoryStore()
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, nil, strat, logger)
 	runner := NewBacktestRunner(engine, exch)
 
 	// 2. Define test prices: Move price from 45000 -> 45200 (20 intervals)
@@ -123,8 +141,8 @@ func TestBacktest_DynamicGrid(t *testing.T) {
 
 	// 3. Run backtest
 	ctx := context.Background()
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	err := runner.Run(ctx, "BTCUSDT", prices)

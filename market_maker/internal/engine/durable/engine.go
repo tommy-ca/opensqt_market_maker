@@ -23,11 +23,12 @@ func NewDBOSEngine(
 	dbosCtx dbos.DBOSContext,
 	pm core.IPositionManager,
 	oe core.IOrderExecutor,
+	strategy core.IStrategy,
 	logger core.ILogger,
 ) engine.Engine {
 	return &DBOSEngine{
 		dbosCtx:         dbosCtx,
-		workflows:       NewTradingWorkflows(pm, oe),
+		workflows:       NewTradingWorkflows(pm, oe, strategy),
 		positionManager: pm,
 		logger:          logger.WithField("component", "dbos_engine"),
 	}

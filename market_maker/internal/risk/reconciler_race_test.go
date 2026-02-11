@@ -31,7 +31,7 @@ func TestReconciliationRaceCondition(t *testing.T) {
 	exchange.On("GetPositions", mock.Anything, mock.Anything).Return([]*pb.Position{
 		{Symbol: "BTCUSDT", Size: pbu.FromGoDecimal(decimal.NewFromInt(10))},
 	}, nil)
-	pm.On("CreateReconciliationSnapshot").Return(func() map[string]*core.InventorySlot {
+	pm.On("GetSlots").Return(func() map[string]*core.InventorySlot {
 		// Simulate the deep copy behavior
 		res := make(map[string]*core.InventorySlot)
 		for k, v := range pm.slots {
@@ -64,6 +64,6 @@ func TestReconciliationRaceCondition(t *testing.T) {
 	}()
 
 	for i := 0; i < 100; i++ {
-		reconciler.Reconcile(ctx)
+		_ = reconciler.Reconcile(ctx)
 	}
 }

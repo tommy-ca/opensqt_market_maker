@@ -46,7 +46,14 @@ type BitgetExchange struct {
 }
 
 // NewBitgetExchange creates a new Bitget exchange instance
-func NewBitgetExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BitgetExchange {
+func NewBitgetExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*BitgetExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("bitget base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("bitget", cfg, logger)
 	e := &BitgetExchange{
 		BaseAdapter: b,
@@ -63,7 +70,7 @@ func NewBitgetExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BitgetE
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
 }
 
 // SignRequest adds authentication headers to the request
@@ -847,6 +854,7 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -906,7 +914,9 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 				},
 			},
 		}
-		client.Send(loginMsg)
+		if err := client.Send(loginMsg); err != nil {
+			e.Logger.Error("Failed to send login message", "error", err)
+		}
 
 		go func() {
 			time.Sleep(100 * time.Millisecond)
@@ -920,7 +930,9 @@ func (e *BitgetExchange) StartOrderStream(ctx context.Context, callback func(upd
 					},
 				},
 			}
-			client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send orders subscription message", "error", err)
+			}
 		}()
 	})
 
@@ -975,6 +987,7 @@ func (e *BitgetExchange) StartPriceStream(ctx context.Context, symbols []string,
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -1020,7 +1033,9 @@ func (e *BitgetExchange) StartPriceStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send tickers subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -1054,6 +1069,7 @@ func (e *BitgetExchange) StartKlineStream(ctx context.Context, symbols []string,
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal kline message", "error", err)
 			return
 		}
 
@@ -1099,7 +1115,9 @@ func (e *BitgetExchange) StartKlineStream(ctx context.Context, symbols []string,
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send kline subscription", "error", err)
+		}
 	})
 
 	go func() {

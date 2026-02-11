@@ -81,6 +81,19 @@ func (m *MockOrderExecutor) BatchCancelOrders(ctx context.Context, symbol string
 	return nil
 }
 
+// Execute implements gridengine.IGridExecutor for testing
+func (m *MockOrderExecutor) Execute(ctx context.Context, actions []*pb.OrderAction) {
+	for _, action := range actions {
+		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			if action.Request != nil {
+				_, _ = m.PlaceOrder(ctx, action.Request)
+			}
+		} else {
+			_ = m.BatchCancelOrders(ctx, action.Symbol, []int64{action.OrderId}, false)
+		}
+	}
+}
+
 // MockPositionManager implements core.IPositionManager for testing
 type MockPositionManager struct {
 	slots map[string]*core.InventorySlot
@@ -97,6 +110,13 @@ func (m *MockPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	return nil
 }
 
+func (m *MockPositionManager) GetAnchorPrice() decimal.Decimal {
+	return decimal.Zero
+}
+
+func (m *MockPositionManager) SetAnchorPrice(price decimal.Decimal) {
+}
+
 func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,10 +124,6 @@ func (m *MockPositionManager) RestoreState(slots map[string]*pb.InventorySlot) e
 		m.slots[k] = &core.InventorySlot{InventorySlot: v}
 	}
 	return nil
-}
-
-func (m *MockPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	return nil, nil
 }
 
 func (m *MockPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
@@ -178,6 +194,33 @@ func (m *MockPositionManager) GetSlots() map[string]*core.InventorySlot {
 	return m.slots
 }
 
+func (m *MockPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	num := len(m.slots)
+	if cap(target) < num {
+		target = make([]core.StrategySlot, num)
+	} else {
+		target = target[:num]
+	}
+
+	i := 0
+	for _, s := range m.slots {
+		target[i] = core.StrategySlot{
+			Price:          s.PriceDec,
+			PositionStatus: s.PositionStatus,
+			PositionQty:    s.PositionQtyDec,
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     s.OrderPriceDec,
+			OrderID:        s.OrderId,
+		}
+		i++
+	}
+	return target
+}
+
 func (m *MockPositionManager) GetSlotCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -196,11 +239,30 @@ func (m *MockPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	}
 }
 
-func (m *MockPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	return m.GetSlots()
+func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
 }
 
-func (m *MockPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
+func (m *MockPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, action := range actions {
+		if action.Type != pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			continue
+		}
+		priceVal := pbu.ToGoDecimal(action.Price)
+		key := priceVal.String()
+		if slot, ok := m.slots[key]; ok {
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+		} else {
+			m.slots[key] = &core.InventorySlot{
+				InventorySlot: &pb.InventorySlot{
+					Price:      action.Price,
+					SlotStatus: pb.SlotStatus_SLOT_STATUS_PENDING,
+				},
+			}
+		}
+	}
 }
 
 func (m *MockPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
@@ -227,4 +289,33 @@ func (m *MockPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
 
 func (m *MockPositionManager) GetRealizedPnL() decimal.Decimal {
 	return decimal.Zero
+}
+
+func (m *MockPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	activePrices := make(map[string]*pb.Order)
+	for _, o := range orders {
+		activePrices[pbu.ToGoDecimal(o.Price).String()] = o
+	}
+
+	for priceKey, slot := range m.slots {
+		slot.Mu.Lock()
+		if order, ok := activePrices[priceKey]; ok {
+			slot.OrderId = order.OrderId
+			slot.ClientOid = order.ClientOrderId
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderStatus = order.Status
+			slot.OrderPrice = order.Price
+			slot.OrderSide = order.Side
+		} else {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
+				slot.OrderId = 0
+				slot.ClientOid = ""
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+			}
+		}
+		slot.Mu.Unlock()
+	}
 }

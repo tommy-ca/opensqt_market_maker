@@ -24,15 +24,15 @@ func NewExchange(exchangeName string, cfg *config.Config, logger core.ILogger, p
 
 	switch strings.ToLower(exchangeName) {
 	case "binance":
-		return binance.NewBinanceExchange(&exchangeConfig, logger, pool), nil
+		return binance.NewBinanceExchange(&exchangeConfig, logger, pool)
 	case "bitget":
-		return bitget.NewBitgetExchange(&exchangeConfig, logger), nil
+		return bitget.NewBitgetExchange(&exchangeConfig, logger)
 	case "gate":
-		return gate.NewGateExchange(&exchangeConfig, logger), nil
+		return gate.NewGateExchange(&exchangeConfig, logger)
 	case "okx":
-		return okx.NewOKXExchange(&exchangeConfig, logger), nil
+		return okx.NewOKXExchange(&exchangeConfig, logger)
 	case "bybit":
-		return bybit.NewBybitExchange(&exchangeConfig, logger), nil
+		return bybit.NewBybitExchange(&exchangeConfig, logger)
 	case "remote":
 		// For remote exchange, BaseURL is treated as the gRPC server address
 		if exchangeConfig.BaseURL == "" {

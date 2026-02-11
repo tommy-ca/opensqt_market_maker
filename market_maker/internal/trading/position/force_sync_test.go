@@ -17,7 +17,7 @@ func TestSuperPositionManager_ForceSync(t *testing.T) {
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 5, 5, 2, 8, rm, logger)
 
 	anchorPrice := decimal.NewFromFloat(45000.0)
-	pm.Initialize(anchorPrice)
+	_ = pm.Initialize(anchorPrice)
 
 	// Pre-condition: 0 filled slots
 	slots := pm.GetSlots()
