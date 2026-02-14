@@ -50,14 +50,17 @@ func TestPlaceOrderUsesMarginEndpointWhenFlagged(t *testing.T) {
 	}))
 	defer server.Close()
 
-	exch := NewBinanceSpotExchange(&config.ExchangeConfig{
+	exch, err := NewBinanceSpotExchange(&config.ExchangeConfig{
 		BaseURL:   server.URL,
 		APIKey:    "key",
 		SecretKey: "secret",
 	}, &nopLogger{}, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceSpotExchange failed: %v", err)
+	}
 	exch.HTTPClient = server.Client()
 
-	_, err := exch.PlaceOrder(context.Background(), &pb.PlaceOrderRequest{
+	_, err = exch.PlaceOrder(context.Background(), &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",
 		Side:          pb.OrderSide_ORDER_SIDE_SELL,
 		Type:          pb.OrderType_ORDER_TYPE_MARKET,
@@ -98,14 +101,17 @@ func TestPlaceOrderUsesSpotEndpointWhenNotMargin(t *testing.T) {
 	}))
 	defer server.Close()
 
-	exch := NewBinanceSpotExchange(&config.ExchangeConfig{
+	exch, err := NewBinanceSpotExchange(&config.ExchangeConfig{
 		BaseURL:   server.URL,
 		APIKey:    "key",
 		SecretKey: "secret",
 	}, &nopLogger{}, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceSpotExchange failed: %v", err)
+	}
 	exch.HTTPClient = server.Client()
 
-	_, err := exch.PlaceOrder(context.Background(), &pb.PlaceOrderRequest{
+	_, err = exch.PlaceOrder(context.Background(), &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",
 		Side:          pb.OrderSide_ORDER_SIDE_BUY,
 		Type:          pb.OrderType_ORDER_TYPE_MARKET,

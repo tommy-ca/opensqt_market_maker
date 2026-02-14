@@ -10,10 +10,28 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// StrategySlot represents the data required by the strategy logic for a single grid level
+type StrategySlot struct {
+	Price          decimal.Decimal
+	PositionStatus pb.PositionStatus
+	PositionQty    decimal.Decimal
+	SlotStatus     pb.SlotStatus
+	OrderSide      pb.OrderSide
+	OrderPrice     decimal.Decimal
+	OrderId        int64
+}
+
 // InventorySlot wraps the generated pb.InventorySlot with a mutex for runtime safety
 type InventorySlot struct {
 	*pb.InventorySlot
 	Mu sync.RWMutex `json:"-"`
+
+	// Cached decimal versions for hot path optimization
+	PriceDec          decimal.Decimal `json:"-"`
+	OrderPriceDec     decimal.Decimal `json:"-"`
+	PositionQtyDec    decimal.Decimal `json:"-"`
+	OriginalQtyDec    decimal.Decimal `json:"-"`
+	OrderFilledQtyDec decimal.Decimal `json:"-"`
 }
 
 // OrderActionResult represents the result of applying an OrderAction
@@ -96,23 +114,33 @@ type IFundingMonitor interface {
 
 // IStrategy defines the interface for trading strategy logic
 type IStrategy interface {
-	CalculateActions(ctx context.Context, slots map[string]*InventorySlot, anchorPrice decimal.Decimal, currentPrice decimal.Decimal) ([]*pb.OrderAction, error)
+	CalculateActions(
+		currentPrice decimal.Decimal,
+		anchorPrice decimal.Decimal,
+		atr decimal.Decimal,
+		volatilityFactor float64,
+		isRiskTriggered bool,
+		regime pb.MarketRegime,
+		slots []StrategySlot,
+	) []*pb.OrderAction
 }
 
 // IPositionManager defines the interface for position management
 type IPositionManager interface {
 	Initialize(anchorPrice decimal.Decimal) error
+	GetAnchorPrice() decimal.Decimal
 	RestoreState(slots map[string]*pb.InventorySlot) error
-	CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error)
 	ApplyActionResults(results []OrderActionResult) error
 	OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error
+	SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal)
 	CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	CancelAllSellOrders(ctx context.Context) ([]*pb.OrderAction, error)
 	GetSlots() map[string]*InventorySlot
+	GetStrategySlots(target []StrategySlot) []StrategySlot
 	GetSlotCount() int
 	GetSnapshot() *pb.PositionManagerSnapshot
-	CreateReconciliationSnapshot() map[string]*InventorySlot
 	UpdateOrderIndex(orderID int64, clientOID string, slot *InventorySlot)
+	MarkSlotsPending(actions []*pb.OrderAction)
 	ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error
 	RestoreFromExchangePosition(totalPosition decimal.Decimal)
 	OnUpdate(callback func(*pb.PositionUpdate))
@@ -188,6 +216,12 @@ type IHealthMonitor interface {
 	Register(component string, check func() error)
 	GetStatus() map[string]string
 	IsHealthy() bool
+}
+
+// IStateStore defines the interface for state persistence
+type IStateStore interface {
+	SaveState(ctx context.Context, state *pb.State) error
+	LoadState(ctx context.Context) (*pb.State, error)
 }
 
 // ILogger defines the interface for logging

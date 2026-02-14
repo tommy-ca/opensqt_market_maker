@@ -7,18 +7,21 @@ import (
 	"market_maker/pkg/pbu"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/shopspring/decimal"
 )
 
 // TradingWorkflows defines the durable workflows for market making
 type TradingWorkflows struct {
-	pm core.IPositionManager
-	oe core.IOrderExecutor
+	pm       core.IPositionManager
+	oe       core.IOrderExecutor
+	strategy core.IStrategy
 }
 
-func NewTradingWorkflows(pm core.IPositionManager, oe core.IOrderExecutor) *TradingWorkflows {
+func NewTradingWorkflows(pm core.IPositionManager, oe core.IOrderExecutor, strategy core.IStrategy) *TradingWorkflows {
 	return &TradingWorkflows{
-		pm: pm,
-		oe: oe,
+		pm:       pm,
+		oe:       oe,
+		strategy: strategy,
 	}
 }
 
@@ -28,7 +31,27 @@ func (w *TradingWorkflows) OnPriceUpdate(ctx dbos.DBOSContext, input any) (any, 
 
 	// 1. Calculate Adjustments (Step)
 	actionsRaw, err := ctx.RunAsStep(ctx, func(ctx context.Context) (any, error) {
-		return w.pm.CalculateAdjustments(ctx, pbu.ToGoDecimal(price.Price))
+		pVal := pbu.ToGoDecimal(price.Price)
+		stratSlots := w.pm.GetStrategySlots(nil)
+		anchorPrice := w.pm.GetAnchorPrice()
+
+		// Note: Durable engine should probably persist risk state too, or assume it's available via RM.
+		// For now we use basic defaults as in SimpleEngine if RM is not injected.
+		// Wait, TradingWorkflows struct doesn't have RiskMonitor.
+		// If we need risk, we should add it.
+		// But for now, let's assume risk is handled inside Strategy if passed, or we pass defaults.
+
+		atr := decimal.Zero
+		volFactor := 0.0
+		isRiskTriggered := false
+		regime := pb.MarketRegime_MARKET_REGIME_RANGE
+
+		actions := w.strategy.CalculateActions(pVal, anchorPrice, atr, volFactor, isRiskTriggered, regime, stratSlots)
+
+		// Post-processing
+		w.pm.MarkSlotsPending(actions)
+
+		return actions, nil
 	})
 	if err != nil {
 		return nil, err

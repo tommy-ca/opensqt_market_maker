@@ -27,3 +27,8 @@ func (s Secret) MarshalJSON() ([]byte, error) {
 func (s Secret) GormValue(ctx interface{}, db interface{}) interface{} {
 	return "[REDACTED]"
 }
+
+// GoString ensures secrets are redacted when using %#v format
+func (s Secret) GoString() string {
+	return "[REDACTED]"
+}

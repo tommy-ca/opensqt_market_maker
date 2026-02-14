@@ -90,7 +90,7 @@ func TestFundingMonitor(t *testing.T) {
 		t.Fatal("filtered subscriber did not receive matching update")
 	}
 
-	monitor.Stop()
+	_ = monitor.Stop()
 }
 
 // helper to backdate last update for staleness testing

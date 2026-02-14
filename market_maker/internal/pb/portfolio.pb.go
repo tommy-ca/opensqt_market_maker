@@ -748,10 +748,12 @@ const file_opensqt_market_maker_v1_portfolio_proto_rawDesc = "" +
 	"\tproposals\x18\x01 \x03(\v2=.opensqt.market_maker.v1.SimulateMarginRequest.ProposalsEntryR\tproposals\x1aR\n" +
 	"\x0eProposalsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
-	"\x05value\x18\x02 \x01(\v2\x14.google.type.DecimalR\x05value:\x028\x01\"\x8d\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x14.google.type.DecimalR\x05value:\x028\x01\"\x91\x02\n" +
 	"\x16SimulateMarginResponse\x12J\n" +
 	"\x16projected_health_score\x18\x01 \x01(\v2\x14.google.type.DecimalR\x14projectedHealthScore\x12'\n" +
-	"\x0fwould_liquidate\x18\x02 \x01(\bR\x0ewouldLiquidate\"\x1b\n" +
+	"\x0fwould_liquidate\x18\x02 \x01(\bR\x0ewouldLiquidate\x12=\n" +
+	"\x0fadjusted_equity\x18\x03 \x01(\v2\x14.google.type.DecimalR\x0eadjustedEquity\x12C\n" +
+	"\x12maintenance_margin\x18\x04 \x01(\v2\x14.google.type.DecimalR\x11maintenanceMargin\"\x1b\n" +
 	"\x19GetTargetPositionsRequest\"_\n" +
 	"\x1aGetTargetPositionsResponse\x12A\n" +
 	"\atargets\x18\x01 \x03(\v2'.opensqt.market_maker.v1.TargetPositionR\atargets\"\xdf\x01\n" +
@@ -833,39 +835,41 @@ var file_opensqt_market_maker_v1_portfolio_proto_depIdxs = []int32{
 	12, // 3: opensqt.market_maker.v1.RiskProfile.health_score:type_name -> google.type.Decimal
 	11, // 4: opensqt.market_maker.v1.SimulateMarginRequest.proposals:type_name -> opensqt.market_maker.v1.SimulateMarginRequest.ProposalsEntry
 	12, // 5: opensqt.market_maker.v1.SimulateMarginResponse.projected_health_score:type_name -> google.type.Decimal
-	6,  // 6: opensqt.market_maker.v1.GetTargetPositionsResponse.targets:type_name -> opensqt.market_maker.v1.TargetPosition
-	12, // 7: opensqt.market_maker.v1.TargetPosition.weight:type_name -> google.type.Decimal
-	12, // 8: opensqt.market_maker.v1.TargetPosition.notional:type_name -> google.type.Decimal
-	12, // 9: opensqt.market_maker.v1.TargetPosition.quality_score:type_name -> google.type.Decimal
-	9,  // 10: opensqt.market_maker.v1.GetMarketScoresResponse.opportunities:type_name -> opensqt.market_maker.v1.PortfolioOpportunity
-	12, // 11: opensqt.market_maker.v1.PortfolioOpportunity.spread:type_name -> google.type.Decimal
-	12, // 12: opensqt.market_maker.v1.PortfolioOpportunity.spread_apr:type_name -> google.type.Decimal
-	12, // 13: opensqt.market_maker.v1.PortfolioOpportunity.basis:type_name -> google.type.Decimal
-	12, // 14: opensqt.market_maker.v1.PortfolioOpportunity.quality_score:type_name -> google.type.Decimal
-	10, // 15: opensqt.market_maker.v1.PortfolioOpportunity.metrics:type_name -> opensqt.market_maker.v1.FundingMetrics
-	12, // 16: opensqt.market_maker.v1.FundingMetrics.sma_1d:type_name -> google.type.Decimal
-	12, // 17: opensqt.market_maker.v1.FundingMetrics.sma_7d:type_name -> google.type.Decimal
-	12, // 18: opensqt.market_maker.v1.FundingMetrics.sma_30d:type_name -> google.type.Decimal
-	12, // 19: opensqt.market_maker.v1.FundingMetrics.stability_score:type_name -> google.type.Decimal
-	12, // 20: opensqt.market_maker.v1.FundingMetrics.volatility_score:type_name -> google.type.Decimal
-	12, // 21: opensqt.market_maker.v1.FundingMetrics.momentum:type_name -> google.type.Decimal
-	12, // 22: opensqt.market_maker.v1.FundingMetrics.oi_factor:type_name -> google.type.Decimal
-	12, // 23: opensqt.market_maker.v1.FundingMetrics.positive_ratio:type_name -> google.type.Decimal
-	12, // 24: opensqt.market_maker.v1.FundingMetrics.average_annual_apr:type_name -> google.type.Decimal
-	12, // 25: opensqt.market_maker.v1.SimulateMarginRequest.ProposalsEntry.value:type_name -> google.type.Decimal
-	0,  // 26: opensqt.market_maker.v1.PortfolioService.GetRiskProfile:input_type -> opensqt.market_maker.v1.GetRiskProfileRequest
-	2,  // 27: opensqt.market_maker.v1.PortfolioService.SimulateMargin:input_type -> opensqt.market_maker.v1.SimulateMarginRequest
-	4,  // 28: opensqt.market_maker.v1.PortfolioService.GetTargetPositions:input_type -> opensqt.market_maker.v1.GetTargetPositionsRequest
-	7,  // 29: opensqt.market_maker.v1.PortfolioService.GetMarketScores:input_type -> opensqt.market_maker.v1.GetMarketScoresRequest
-	1,  // 30: opensqt.market_maker.v1.PortfolioService.GetRiskProfile:output_type -> opensqt.market_maker.v1.RiskProfile
-	3,  // 31: opensqt.market_maker.v1.PortfolioService.SimulateMargin:output_type -> opensqt.market_maker.v1.SimulateMarginResponse
-	5,  // 32: opensqt.market_maker.v1.PortfolioService.GetTargetPositions:output_type -> opensqt.market_maker.v1.GetTargetPositionsResponse
-	8,  // 33: opensqt.market_maker.v1.PortfolioService.GetMarketScores:output_type -> opensqt.market_maker.v1.GetMarketScoresResponse
-	30, // [30:34] is the sub-list for method output_type
-	26, // [26:30] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	12, // 6: opensqt.market_maker.v1.SimulateMarginResponse.adjusted_equity:type_name -> google.type.Decimal
+	12, // 7: opensqt.market_maker.v1.SimulateMarginResponse.maintenance_margin:type_name -> google.type.Decimal
+	6,  // 8: opensqt.market_maker.v1.GetTargetPositionsResponse.targets:type_name -> opensqt.market_maker.v1.TargetPosition
+	12, // 9: opensqt.market_maker.v1.TargetPosition.weight:type_name -> google.type.Decimal
+	12, // 10: opensqt.market_maker.v1.TargetPosition.notional:type_name -> google.type.Decimal
+	12, // 11: opensqt.market_maker.v1.TargetPosition.quality_score:type_name -> google.type.Decimal
+	9,  // 12: opensqt.market_maker.v1.GetMarketScoresResponse.opportunities:type_name -> opensqt.market_maker.v1.PortfolioOpportunity
+	12, // 13: opensqt.market_maker.v1.PortfolioOpportunity.spread:type_name -> google.type.Decimal
+	12, // 14: opensqt.market_maker.v1.PortfolioOpportunity.spread_apr:type_name -> google.type.Decimal
+	12, // 15: opensqt.market_maker.v1.PortfolioOpportunity.basis:type_name -> google.type.Decimal
+	12, // 16: opensqt.market_maker.v1.PortfolioOpportunity.quality_score:type_name -> google.type.Decimal
+	10, // 17: opensqt.market_maker.v1.PortfolioOpportunity.metrics:type_name -> opensqt.market_maker.v1.FundingMetrics
+	12, // 18: opensqt.market_maker.v1.FundingMetrics.sma_1d:type_name -> google.type.Decimal
+	12, // 19: opensqt.market_maker.v1.FundingMetrics.sma_7d:type_name -> google.type.Decimal
+	12, // 20: opensqt.market_maker.v1.FundingMetrics.sma_30d:type_name -> google.type.Decimal
+	12, // 21: opensqt.market_maker.v1.FundingMetrics.stability_score:type_name -> google.type.Decimal
+	12, // 22: opensqt.market_maker.v1.FundingMetrics.volatility_score:type_name -> google.type.Decimal
+	12, // 23: opensqt.market_maker.v1.FundingMetrics.momentum:type_name -> google.type.Decimal
+	12, // 24: opensqt.market_maker.v1.FundingMetrics.oi_factor:type_name -> google.type.Decimal
+	12, // 25: opensqt.market_maker.v1.FundingMetrics.positive_ratio:type_name -> google.type.Decimal
+	12, // 26: opensqt.market_maker.v1.FundingMetrics.average_annual_apr:type_name -> google.type.Decimal
+	12, // 27: opensqt.market_maker.v1.SimulateMarginRequest.ProposalsEntry.value:type_name -> google.type.Decimal
+	0,  // 28: opensqt.market_maker.v1.PortfolioService.GetRiskProfile:input_type -> opensqt.market_maker.v1.GetRiskProfileRequest
+	2,  // 29: opensqt.market_maker.v1.PortfolioService.SimulateMargin:input_type -> opensqt.market_maker.v1.SimulateMarginRequest
+	4,  // 30: opensqt.market_maker.v1.PortfolioService.GetTargetPositions:input_type -> opensqt.market_maker.v1.GetTargetPositionsRequest
+	7,  // 31: opensqt.market_maker.v1.PortfolioService.GetMarketScores:input_type -> opensqt.market_maker.v1.GetMarketScoresRequest
+	1,  // 32: opensqt.market_maker.v1.PortfolioService.GetRiskProfile:output_type -> opensqt.market_maker.v1.RiskProfile
+	3,  // 33: opensqt.market_maker.v1.PortfolioService.SimulateMargin:output_type -> opensqt.market_maker.v1.SimulateMarginResponse
+	5,  // 34: opensqt.market_maker.v1.PortfolioService.GetTargetPositions:output_type -> opensqt.market_maker.v1.GetTargetPositionsResponse
+	8,  // 35: opensqt.market_maker.v1.PortfolioService.GetMarketScores:output_type -> opensqt.market_maker.v1.GetMarketScoresResponse
+	32, // [32:36] is the sub-list for method output_type
+	28, // [28:32] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_opensqt_market_maker_v1_portfolio_proto_init() }

@@ -29,7 +29,7 @@ func BenchmarkWorkerPool_Submit(b *testing.B) {
 	b.ResetTimer()
 	var counter int64
 	for i := 0; i < b.N; i++ {
-		pool.Submit(func() {
+		_ = pool.Submit(func() {
 			atomic.AddInt64(&counter, 1)
 		})
 	}

@@ -47,12 +47,12 @@ func TestBitgetStartPriceStream(t *testing.T) {
 					"high24h": "46000.00",
 					"low24h": "43000.00",
 					"bestBid": "45000.00",
-					"bestAsk": "45001.00",
-					"ts": 1610000000000
-				}
-			]
-		}`
-		c.WriteMessage(websocket.TextMessage, []byte(msg))
+				"bestAsk": "45001.00",
+				"ts": 1610000000000
+			}
+		]
+	}`
+		_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -63,13 +63,16 @@ func TestBitgetStartPriceStream(t *testing.T) {
 	// Adapter uses baseURL from config.
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	if err != nil {
@@ -143,7 +146,7 @@ func TestBitgetStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -156,13 +159,16 @@ func TestBitgetStartOrderStream(t *testing.T) {
 		BaseURL:    wsURL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	if err != nil {
@@ -190,7 +196,7 @@ func TestBitgetPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": {
@@ -208,7 +214,10 @@ func TestBitgetPlaceOrder(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",
@@ -235,7 +244,7 @@ func TestBitgetGetAccount(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		if strings.Contains(r.URL.Path, "/api/v2/mix/account/account") {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
 				"data": {
@@ -247,7 +256,7 @@ func TestBitgetGetAccount(t *testing.T) {
 				}
 			}`))
 		} else if strings.Contains(r.URL.Path, "/api/v2/mix/position/single-position") {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
 				"data": []
@@ -265,7 +274,10 @@ func TestBitgetGetAccount(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
 	acc, err := exchange.GetAccount(context.Background())
 	if err != nil {
@@ -285,7 +297,7 @@ func TestBitgetCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": {
@@ -303,9 +315,12 @@ func TestBitgetCancelOrder(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
-	err := exchange.CancelOrder(context.Background(), "BTCUSDT", 123456, false)
+	err = exchange.CancelOrder(context.Background(), "BTCUSDT", 123456, false)
 	if err != nil {
 		t.Fatalf("CancelOrder failed: %v", err)
 	}
@@ -318,7 +333,10 @@ func TestSignRequest(t *testing.T) {
 		Passphrase: "test_passphrase",
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBitgetExchange(cfg, logger)
+	exchange, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 
 	req, _ := http.NewRequest("POST", "https://api.bitget.com/api/v2/mix/order/place-order", nil)
 	exchange.SignRequest(req, "")
@@ -344,7 +362,7 @@ func TestBitgetGetSymbolInfo(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"code": "00000",
 			"msg": "success",
 			"data": [
@@ -364,7 +382,10 @@ func TestBitgetGetSymbolInfo(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("DEBUG")
-	ex := NewBitgetExchange(cfg, logger)
+	ex, err := NewBitgetExchange(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewBitgetExchange failed: %v", err)
+	}
 	ctx := context.Background()
 
 	info, err := ex.GetSymbolInfo(ctx, "BTCUSDT")

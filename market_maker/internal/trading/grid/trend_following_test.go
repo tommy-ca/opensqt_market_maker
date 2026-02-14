@@ -1,6 +1,7 @@
 package grid
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"testing"
@@ -30,10 +31,10 @@ func TestGridStrategy_TrendFollowing(t *testing.T) {
 
 	// Case 1: Excessive Inventory (Long) -> Expect price skew DOWN (to sell easier/buy lower)
 	// Add 10 units of inventory.
-	levels := []Slot{}
+	levels := []core.StrategySlot{}
 	for i := 0; i < 10; i++ {
 		price := decimal.NewFromFloat(49000.0 + float64(i))
-		levels = append(levels, Slot{
+		levels = append(levels, core.StrategySlot{
 			Price:          price,
 			PositionStatus: pb.PositionStatus_POSITION_STATUS_FILLED,
 			PositionQty:    decimal.NewFromFloat(1.0),
@@ -41,7 +42,7 @@ func TestGridStrategy_TrendFollowing(t *testing.T) {
 		})
 	}
 
-	actions := strat.CalculateActions(current, anchor, decimal.Zero, 0, false, levels)
+	actions := strat.CalculateActions(current, anchor, decimal.Zero, 0, false, pb.MarketRegime_MARKET_REGIME_RANGE, levels)
 
 	// With +10 inventory and skew 0.001:
 	// Adjustment = 1 - (10 * 0.001) = 0.99

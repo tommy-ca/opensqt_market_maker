@@ -13,7 +13,9 @@ func TestZapLogger_OTelBridge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OTel setup failed: %v", err)
 	}
-	defer tel.Shutdown(context.Background())
+	defer func() {
+		_ = tel.Shutdown(context.Background())
+	}()
 
 	// 2. Create Zap Logger
 	logger, err := NewZapLogger("DEBUG")

@@ -4,7 +4,7 @@ import (
 	"context"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
-	"market_maker/internal/trading/strategy"
+	"market_maker/internal/trading/grid"
 	"market_maker/pkg/pbu"
 	"testing"
 	"time"
@@ -13,7 +13,17 @@ import (
 )
 
 func createTestPM(symbol string, interval, qty, minVal float64, buyW, sellW, pDec, qDec int, rm core.IRiskMonitor, logger core.ILogger) *SuperPositionManager {
-	strat := strategy.NewGridStrategy(symbol, "mock", decimal.NewFromFloat(interval), decimal.NewFromFloat(qty), decimal.NewFromFloat(minVal), buyW, sellW, pDec, qDec, false, rm, nil, logger)
+	strat := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:         symbol,
+		PriceInterval:  decimal.NewFromFloat(interval),
+		OrderQuantity:  decimal.NewFromFloat(qty),
+		MinOrderValue:  decimal.NewFromFloat(minVal),
+		BuyWindowSize:  buyW,
+		SellWindowSize: sellW,
+		PriceDecimals:  pDec,
+		QtyDecimals:    qDec,
+		IsNeutral:      false,
+	})
 	return NewSuperPositionManager(symbol, "mock", interval, qty, minVal, buyW, sellW, pDec, qDec, strat, rm, nil, logger, nil)
 }
 
@@ -23,7 +33,7 @@ func TestSuperPositionManager_RestoreFromExchangePosition(t *testing.T) {
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 5, 5, 2, 8, rm, logger)
 
 	anchorPrice := decimal.NewFromFloat(45000.0)
-	pm.Initialize(anchorPrice)
+	_ = pm.Initialize(anchorPrice)
 
 	totalPos := decimal.NewFromFloat(0.002)
 	pm.RestoreFromExchangePosition(totalPos)
@@ -53,46 +63,36 @@ func TestSuperPositionManager_RestoreFromExchangePosition(t *testing.T) {
 	}
 }
 
-func TestSuperPositionManager_CalculateAdjustments(t *testing.T) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 3, 3, 2, 3, rm, logger)
-
-	pm.Initialize(decimal.NewFromFloat(45000.0))
-	actions, err := pm.CalculateAdjustments(context.Background(), decimal.NewFromFloat(44999.5))
-	if err != nil {
-		t.Fatalf("Failed to calculate adjustments: %v", err)
-	}
-
-	if len(actions) == 0 {
-		t.Error("No actions were calculated")
-	}
-
-	foundPlace := false
-	for _, a := range actions {
-		if a.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && a.Request.Side == pb.OrderSide_ORDER_SIDE_BUY {
-			foundPlace = true
-			break
-		}
-	}
-	if !foundPlace {
-		t.Error("Expected at least one PLACE action")
-	}
-}
-
 func TestSuperPositionManager_ApplyActionResults(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(45000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 
-	actions, _ := pm.CalculateAdjustments(context.Background(), decimal.NewFromFloat(44999.5))
+	// Manually create actions
+	actions := []*pb.OrderAction{
+		{
+			Type:  pb.OrderActionType_ORDER_ACTION_TYPE_PLACE,
+			Price: pbu.FromGoDecimal(decimal.NewFromFloat(44999.0)),
+			Request: &pb.PlaceOrderRequest{
+				Side:          pb.OrderSide_ORDER_SIDE_BUY,
+				Price:         pbu.FromGoDecimal(decimal.NewFromFloat(44999.0)),
+				ClientOrderId: "test_client_id_1",
+			},
+		},
+	}
 
 	results := make([]core.OrderActionResult, len(actions))
 	for i, a := range actions {
 		results[i] = core.OrderActionResult{
 			Action: a,
-			Order:  &pb.Order{OrderId: int64(1000 + i)},
+			Order: &pb.Order{
+				OrderId:       int64(1000 + i),
+				ClientOrderId: a.Request.ClientOrderId,
+				Side:          a.Request.Side,
+				Price:         a.Request.Price,
+				Status:        pb.OrderStatus_ORDER_STATUS_NEW,
+			},
 		}
 	}
 
@@ -117,7 +117,7 @@ func TestSuperPositionManager_OnOrderUpdate(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(45000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 
 	slots := pm.GetSlots()
 	var testSlot *core.InventorySlot
@@ -195,7 +195,7 @@ func TestSuperPositionManager_CancelAllBuyOrders(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(45000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 
 	buySlots := 0
 	for _, slot := range pm.GetSlots() {
@@ -225,7 +225,7 @@ func TestSuperPositionManager_GetSlotCount(t *testing.T) {
 	if pm.GetSlotCount() != 0 {
 		t.Error("Expected 0")
 	}
-	pm.Initialize(decimal.NewFromFloat(45000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 	if pm.GetSlotCount() != 7 {
 		t.Errorf("Expected 7, got %d", pm.GetSlotCount())
 	}
@@ -235,7 +235,7 @@ func TestSuperPositionManager_GetSnapshot(t *testing.T) {
 	logger := &mockLogger{}
 	rm := &mockRiskMonitor{}
 	pm := createTestPM("BTCUSDT", 10.0, 100.0, 5.0, 2, 2, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(45000.0))
+	_ = pm.Initialize(decimal.NewFromFloat(45000.0))
 
 	snapshot := pm.GetSnapshot()
 
@@ -255,64 +255,5 @@ func TestSuperPositionManager_GetSnapshot(t *testing.T) {
 		if slot.Price == nil {
 			t.Error("Snapshot slot missing price")
 		}
-	}
-}
-
-func TestSuperPositionManager_DynamicGrid(t *testing.T) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 10.0, 100.0, 5.0, 2, 2, 2, 3, rm, logger)
-
-	pm.Initialize(decimal.NewFromFloat(100.0))
-
-	slots := pm.GetSlots()
-	has90 := false
-	if _, ok := slots["90"]; ok {
-		has90 = true
-	}
-	if _, ok := slots["90.00"]; ok {
-		has90 = true
-	}
-
-	if !has90 {
-		t.Errorf("Expected slot at 90")
-	}
-
-	newPrice := decimal.NewFromFloat(200.0)
-	actions, err := pm.CalculateAdjustments(context.Background(), newPrice)
-	if err != nil {
-		t.Fatalf("CalculateAdjustments failed: %v", err)
-	}
-
-	has190 := false
-	for _, a := range actions {
-		if a.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			price := pbu.ToGoDecimal(a.Price)
-			if price.Equal(decimal.NewFromFloat(190.0)) {
-				has190 = true
-			}
-		}
-	}
-
-	if !has190 {
-		t.Error("Dynamic Grid failed: Did not place order at new level 190.0")
-	}
-
-	currentSlots := pm.GetSlots()
-	if len(currentSlots) != 6 {
-		t.Errorf("Expected 6 slots, got %d", len(currentSlots))
-	}
-}
-
-func BenchmarkCalculateAdjustments(b *testing.B) {
-	logger := &mockLogger{}
-	rm := &mockRiskMonitor{}
-	pm := createTestPM("BTCUSDT", 1.0, 30.0, 5.0, 10, 10, 2, 3, rm, logger)
-	pm.Initialize(decimal.NewFromFloat(45000.0))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		price := decimal.NewFromFloat(45000.0 + float64(i%20))
-		pm.CalculateAdjustments(context.Background(), price)
 	}
 }

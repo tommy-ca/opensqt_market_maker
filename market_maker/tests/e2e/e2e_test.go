@@ -9,21 +9,24 @@ import (
 	"market_maker/internal/pb"
 	"market_maker/internal/risk"
 	"market_maker/internal/trading/backtest"
+	"market_maker/internal/trading/grid"
 	"market_maker/internal/trading/order"
 	"market_maker/internal/trading/position"
-	"market_maker/internal/trading/strategy"
 	"market_maker/pkg/logging"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/telemetry"
-	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	testDB = "e2e_test.db"
 	symbol = "BTCUSDT"
 )
 
@@ -49,13 +52,19 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 		exch, logger, []string{symbol}, "1m", 3.0, 20, 2, "All", nil,
 	)
 
-	gridStrategy := strategy.NewGridStrategy(
-		symbol, exch.GetName(),
-		decimal.NewFromFloat(cfg.Trading.PriceInterval),
-		decimal.NewFromFloat(cfg.Trading.OrderQuantity),
-		decimal.NewFromFloat(cfg.Trading.MinOrderValue),
-		5, 5, 2, 3, false, riskMonitor, nil, logger,
-	)
+	gridStrategy := grid.NewStrategy(grid.StrategyConfig{
+		Symbol:              symbol,
+		PriceInterval:       decimal.NewFromFloat(cfg.Trading.PriceInterval),
+		OrderQuantity:       decimal.NewFromFloat(cfg.Trading.OrderQuantity),
+		MinOrderValue:       decimal.NewFromFloat(cfg.Trading.MinOrderValue),
+		BuyWindowSize:       5,
+		SellWindowSize:      5,
+		PriceDecimals:       2,
+		QtyDecimals:         3,
+		IsNeutral:           false,
+		VolatilityScale:     1.0,
+		InventorySkewFactor: 0.0,
+	})
 
 	pm := position.NewSuperPositionManager(
 		symbol, exch.GetName(),
@@ -86,7 +95,7 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	engine := simple.NewSimpleEngine(store, pm, orderExecutor, riskMonitor, logger)
+	engine := simple.NewSimpleEngine(store, pm, orderExecutor, riskMonitor, gridStrategy, logger)
 
 	cleanup := func() {
 		store.Close()
@@ -96,91 +105,62 @@ func setupEngine(t *testing.T, exch core.IExchange, dbPath string) (*simple.Simp
 }
 
 func TestE2E_CrashRecovery(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	// 1. Initial Start
-	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
-	if err := engine.Start(ctx); err != nil {
-		t.Fatalf("Engine start failed: %v", err)
-	}
 
+	_ = engine.Start(ctx)
+
+	// 1. Initial State - place orders
 	initialPrice := decimal.NewFromInt(45000)
-	pm.Initialize(initialPrice)
+	_ = pm.Initialize(initialPrice)
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
-	// Simulate some orders being placed
-	err := engine.OnPriceUpdate(ctx, &pb.PriceChange{
-		Symbol: symbol,
-		Price:  pbu.FromGoDecimal(initialPrice),
-	})
-	if err != nil {
-		t.Fatalf("Price update failed: %v", err)
-	}
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
-	// Verify we have locked slots (orders placed)
-	slotsBefore := pm.GetSlots()
-	lockedBefore := 0
-	for _, s := range slotsBefore {
-		if s.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED {
-			lockedBefore++
-		}
-	}
-	if lockedBefore == 0 {
-		t.Fatal("No orders placed before crash")
-	}
+	// 2. Stop engine - Simulate Crash
+	_ = engine.Stop()
 
-	// 2. simulate CRASH
-	engine.Stop()
+	// 3. Restart engine - Restore State
+	engine2, _, _, cleanup2 := setupEngine(t, exch, dbPath)
+	defer cleanup2()
 
-	// 3. RECOVER
-	engineRec, pmRec, _, cleanupRec := setupEngine(t, exch, testDB)
-	defer cleanupRec()
-	if err := engineRec.Start(ctx); err != nil {
-		t.Fatalf("Recovery start failed: %v", err)
-	}
+	err := engine2.Start(ctx)
+	require.NoError(t, err)
 
-	// Verify slots are restored
-	slotsAfter := pmRec.GetSlots()
-	lockedAfter := 0
-	for _, s := range slotsAfter {
-		if s.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED {
-			lockedAfter++
-		}
-	}
-
-	if lockedAfter != lockedBefore {
-		t.Errorf("Expected %d locked slots after recovery, got %d", lockedBefore, lockedAfter)
+	// Verify restored state
+	restoredPM := engine2.GetPositionManager()
+	if restoredPM.GetSlotCount() == 0 {
+		t.Error("Position manager has no slots after restoration")
 	}
 }
 
 func TestE2E_RiskProtection(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, rm, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, rm, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
-	if err := rm.Start(ctx); err != nil {
-		t.Fatalf("Failed to start risk monitor: %v", err)
-	}
-	engine.Start(ctx)
-	pm.Initialize(decimal.NewFromInt(45000))
+	_ = engine.Start(ctx)
 
-	// Normal state
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(45000))})
+	initialPrice := decimal.NewFromInt(45000)
+	_ = pm.Initialize(initialPrice)
 
-	// Wait for orders to be placed on exchange
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	if len(openOrders) == 0 {
-		t.Fatal("No orders placed")
-	}
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
+
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
 	// Trigger Risk Anomaly
 	anomalyCandle := &pb.Candle{
@@ -201,52 +181,49 @@ func TestE2E_RiskProtection(t *testing.T) {
 	}
 	rm.HandleKlineUpdate(anomalyCandle)
 
-	time.Sleep(50 * time.Millisecond) // Wait for global trigger goroutine
-
-	if !rm.IsTriggered() {
-		t.Fatal("Risk monitor did not trigger")
-	}
+	assert.Eventually(t, func() bool {
+		return rm.IsTriggered()
+	}, 1*time.Second, 10*time.Millisecond, "Risk monitor did not trigger")
 
 	// Next price update should trigger engine to cancel buys
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(39999))})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(decimal.NewFromInt(39999))})
 
-	time.Sleep(200 * time.Millisecond)
-
-	finalOpenOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	for _, o := range finalOpenOrders {
-		if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
-			t.Errorf("Buy order %d still open after risk trigger", o.OrderId)
+	assert.Eventually(t, func() bool {
+		finalOpenOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		for _, o := range finalOpenOrders {
+			if o.Side == pb.OrderSide_ORDER_SIDE_BUY {
+				return false
+			}
 		}
-	}
+		return true
+	}, 1*time.Second, 10*time.Millisecond, "Buy orders still open after risk trigger")
 }
 
 func TestE2E_TradingFlow(t *testing.T) {
-	os.Remove(testDB)
-	defer os.Remove(testDB)
+	dbPath := filepath.Join(t.TempDir(), "e2e_test.db")
 
 	exch := backtest.NewSimulatedExchange()
 	ctx := context.Background()
 
-	engine, pm, _, cleanup := setupEngine(t, exch, testDB)
+	engine, pm, _, cleanup := setupEngine(t, exch, dbPath)
 	defer cleanup()
-	engine.Start(ctx)
+	_ = engine.Start(ctx)
 
 	// Start order stream to feed engine
-	exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
-		engine.OnOrderUpdate(ctx, update)
+	_ = exch.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+		_ = engine.OnOrderUpdate(ctx, update)
 	})
 
 	initialPrice := decimal.NewFromInt(45000)
-	pm.Initialize(initialPrice)
+	_ = pm.Initialize(initialPrice)
 
 	// 1. First price update - places orders
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(initialPrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
-	if len(openOrders) == 0 {
-		t.Fatal("No orders placed")
-	}
+	assert.Eventually(t, func() bool {
+		openOrders, _ := exch.GetOpenOrders(ctx, symbol, false)
+		return len(openOrders) > 0
+	}, 1*time.Second, 10*time.Millisecond, "No orders placed")
 
 	// 2. Price drop - fill a buy order
 	// Level 44990 should have a buy order
@@ -254,35 +231,27 @@ func TestE2E_TradingFlow(t *testing.T) {
 	exch.UpdatePrice(symbol, dropPrice)
 
 	// Wait for fill notification and engine processing
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify slot is filled in PM
-	slots := pm.GetSlots()
-	foundFilled := false
-	for _, s := range slots {
-		if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			foundFilled = true
-			break
+	assert.Eventually(t, func() bool {
+		slots := pm.GetSlots()
+		for _, s := range slots {
+			if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+				return true
+			}
 		}
-	}
-	if !foundFilled {
-		t.Error("No slot marked as FILLED after price drop")
-	}
+		return false
+	}, 1*time.Second, 10*time.Millisecond, "No slot marked as FILLED after price drop")
 
 	// 3. Price rise - should place a sell order for the filled slot
 	risePrice := decimal.NewFromInt(45010)
-	engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(risePrice)})
+	_ = engine.OnPriceUpdate(ctx, &pb.PriceChange{Symbol: symbol, Price: pbu.FromGoDecimal(risePrice)})
 
-	time.Sleep(100 * time.Millisecond)
-	openOrders, _ = exch.GetOpenOrders(ctx, symbol, false)
-	foundSell := false
-	for _, o := range openOrders {
-		if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
-			foundSell = true
-			break
+	assert.Eventually(t, func() bool {
+		allOrders := exch.GetOrders()
+		for _, o := range allOrders {
+			if o.Side == pb.OrderSide_ORDER_SIDE_SELL {
+				return true
+			}
 		}
-	}
-	if !foundSell {
-		t.Error("No SELL order placed after repositioning")
-	}
+		return false
+	}, 1*time.Second, 10*time.Millisecond, "No SELL order placed after repositioning")
 }

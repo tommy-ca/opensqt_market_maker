@@ -48,8 +48,8 @@ func TestLegManager_SyncAndNeutrality(t *testing.T) {
 	mockEx.SetPosition("BTCUSDT", decimal.NewFromInt(1))
 	mockEx2.SetPosition("BTCUSDT", decimal.NewFromInt(-1))
 
-	mgr.SyncState(context.Background(), "test_ex", "BTCUSDT")
-	mgr.SyncState(context.Background(), "test_ex_2", "BTCUSDT")
+	_ = mgr.SyncState(context.Background(), "test_ex", "BTCUSDT")
+	_ = mgr.SyncState(context.Background(), "test_ex_2", "BTCUSDT")
 
 	assert.True(t, mgr.HasOpenPosition("BTCUSDT"))
 	assert.True(t, mgr.IsDeltaNeutral("BTCUSDT"))

@@ -42,7 +42,14 @@ type GateExchange struct {
 }
 
 // NewGateExchange creates a new Gate.io exchange instance
-func NewGateExchange(cfg *config.ExchangeConfig, logger core.ILogger) *GateExchange {
+func NewGateExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*GateExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("gate base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("gate", cfg, logger)
 	e := &GateExchange{
 		BaseAdapter:      b,
@@ -58,7 +65,7 @@ func NewGateExchange(cfg *config.ExchangeConfig, logger core.ILogger) *GateExcha
 	})
 	b.SetParseError(e.parseError)
 
-	return e
+	return e, nil
 }
 
 // SignREST generates signature for REST API
@@ -167,7 +174,7 @@ func (e *GateExchange) placeOrderInternal(ctx context.Context, req *pb.PlaceOrde
 	e.mu.RUnlock()
 	if !ok {
 		// Try to fetch if not found
-		e.FetchExchangeInfo(ctx, req.Symbol)
+		_ = e.FetchExchangeInfo(ctx, req.Symbol)
 		e.mu.RLock()
 		multiplier = e.quantoMultiplier[contract]
 		e.mu.RUnlock()
@@ -703,6 +710,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal order message", "error", err)
 			return
 		}
 
@@ -726,6 +734,7 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 			Left       int64  `json:"left"`
 		}
 		if err := json.Unmarshal(event.Result, &orders); err != nil {
+			e.Logger.Error("Failed to unmarshal orders result", "error", err)
 			return
 		}
 
@@ -795,7 +804,9 @@ func (e *GateExchange) StartOrderStream(ctx context.Context, callback func(updat
 				"SIGN":   signature,
 			},
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send order stream subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -831,6 +842,7 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -846,6 +858,7 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 			Last     string `json:"last"`
 		}
 		if err := json.Unmarshal(event.Result, &tickers); err != nil {
+			e.Logger.Error("Failed to unmarshal tickers result", "error", err)
 			return
 		}
 
@@ -875,7 +888,9 @@ func (e *GateExchange) StartPriceStream(ctx context.Context, symbols []string, c
 			"event":   "subscribe",
 			"payload": gateSymbols,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send tickers subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -906,6 +921,7 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			Result  json.RawMessage `json:"result"`
 		}
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal kline message", "error", err)
 			return
 		}
 
@@ -923,6 +939,7 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			N string `json:"n"` // Name: 1m_BTC_USDT
 		}
 		if err := json.Unmarshal(event.Result, &raw); err != nil {
+			e.Logger.Error("Failed to unmarshal kline result", "error", err)
 			return
 		}
 
@@ -962,7 +979,9 @@ func (e *GateExchange) StartKlineStream(ctx context.Context, symbols []string, i
 			"event":   "subscribe",
 			"payload": payload,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send kline subscription", "error", err)
+		}
 	})
 
 	go func() {

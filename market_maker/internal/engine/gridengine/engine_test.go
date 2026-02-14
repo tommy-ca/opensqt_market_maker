@@ -82,3 +82,32 @@ func TestGridEngine_OnPriceUpdate(t *testing.T) {
 	// Verify Slots are populated
 	assert.Greater(t, len(mockStore.state.Slots), 0, "Slots should be populated after initial update")
 }
+
+func TestGridEngine_Stop(t *testing.T) {
+	// Setup Dependencies
+	logger, _ := logging.NewZapLogger("INFO")
+	mockExec := mock.NewMockOrderExecutor()
+	mockSlotMgr := mock.NewMockPositionManager()
+	mockStore := &MockStore{}
+
+	// Create minimal config
+	cfg := Config{
+		Symbol: "BTCUSDT",
+	}
+
+	// Initialize Engine
+	eng := NewGridEngine(
+		nil, // exchanges
+		mockExec,
+		nil, // risk monitor
+		mockStore,
+		logger,
+		nil, // worker pool
+		mockSlotMgr,
+		cfg,
+	)
+
+	// Test Stop
+	err := eng.Stop()
+	assert.NoError(t, err)
+}

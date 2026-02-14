@@ -20,10 +20,11 @@ import (
 
 // SimpleEngine implements the engine.Engine interface
 type SimpleEngine struct {
-	store           Store
+	store           core.IStateStore
 	positionManager core.IPositionManager
 	orderExecutor   core.IOrderExecutor
 	riskMonitor     core.IRiskMonitor
+	strategy        core.IStrategy
 	logger          core.ILogger
 
 	mu sync.Mutex
@@ -42,10 +43,11 @@ type SimpleEngine struct {
 
 // NewSimpleEngine creates a new workflow engine
 func NewSimpleEngine(
-	store Store,
+	store core.IStateStore,
 	pm core.IPositionManager,
 	oe core.IOrderExecutor,
 	rm core.IRiskMonitor,
+	strategy core.IStrategy,
 	logger core.ILogger,
 ) engine.Engine {
 	tracer := telemetry.GetTracer("workflow-engine")
@@ -63,6 +65,7 @@ func NewSimpleEngine(
 		positionManager: pm,
 		orderExecutor:   oe,
 		riskMonitor:     rm,
+		strategy:        strategy,
 		logger:          logger,
 		tracer:          tracer,
 		priceCounter:    priceCounter,
@@ -94,6 +97,11 @@ func (e *SimpleEngine) Start(ctx context.Context) error {
 	} else {
 		e.logger.Info("No persisted state found, starting fresh")
 	}
+
+	// Exchange Reconciliation (The Reality Check)
+	// SimpleEngine needs access to an exchange to reconcile
+	// Currently it doesn't store one. I'll add it if needed or just skip here
+	// for generic workflow engine.
 
 	return nil
 }
@@ -159,12 +167,26 @@ func (e *SimpleEngine) OnPriceUpdate(ctx context.Context, price *pb.PriceChange)
 	}
 
 	// 2. Calculate Adjustments (Deterministic Decision)
-	{
-		actions, err := e.positionManager.CalculateAdjustments(ctx, pVal)
-		if err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("failed to calculate adjustments: %w", err)
+	if e.strategy != nil {
+		// Prepare inputs for strategy
+		stratSlots := e.positionManager.GetStrategySlots(nil)
+		anchorPrice := e.positionManager.GetAnchorPrice()
+
+		atr := decimal.Zero
+		volFactor := 0.0
+		isRiskTriggered := false
+		regime := pb.MarketRegime_MARKET_REGIME_RANGE // Default
+
+		if e.riskMonitor != nil {
+			atr = e.riskMonitor.GetATR(price.Symbol)
+			volFactor = e.riskMonitor.GetVolatilityFactor(price.Symbol)
+			isRiskTriggered = e.riskMonitor.IsTriggered()
 		}
+
+		actions := e.strategy.CalculateActions(pVal, anchorPrice, atr, volFactor, isRiskTriggered, regime, stratSlots)
+
+		// Post-processing: Ensure slots exist for any PLACE actions returned by strategy
+		e.positionManager.MarkSlotsPending(actions)
 
 		// 3. Execute Actions (Side Effects)
 		if len(actions) > 0 {
@@ -292,9 +314,13 @@ func (e *SimpleEngine) executeActions(ctx context.Context, actions []*pb.OrderAc
 func (e *SimpleEngine) buildStateSnapshot(price *pb.PriceChange) *pb.State {
 	slots := e.positionManager.GetSlots()
 	pbSlots := make(map[string]*pb.InventorySlot)
+	orderIndex := make(map[int64]string)
 	var symbol string
 	for k, v := range slots {
 		pbSlots[k] = proto.Clone(v.InventorySlot).(*pb.InventorySlot)
+		if v.OrderId != 0 {
+			orderIndex[v.OrderId] = k
+		}
 	}
 
 	if price != nil {
@@ -306,6 +332,7 @@ func (e *SimpleEngine) buildStateSnapshot(price *pb.PriceChange) *pb.State {
 	e.currentVersion++
 	state := &pb.State{
 		Slots:          pbSlots,
+		OrderIndex:     orderIndex,
 		LastUpdateTime: time.Now().UnixNano(),
 		Symbol:         symbol,
 		Version:        e.currentVersion,
@@ -342,10 +369,15 @@ func (e *SimpleEngine) applyResultsToState(state *pb.State, results []core.Order
 
 func (e *SimpleEngine) applyOrderUpdateToState(state *pb.State, update *pb.OrderUpdate) error {
 	var targetSlot *pb.InventorySlot
-	for _, s := range state.Slots {
-		if s.OrderId == update.OrderId || (update.ClientOrderId != "" && s.ClientOid == update.ClientOrderId) {
-			targetSlot = s
-			break
+	if priceKey, ok := state.OrderIndex[update.OrderId]; ok {
+		targetSlot = state.Slots[priceKey]
+	} else {
+		// Fallback for safety or ClientOrderId matches
+		for _, s := range state.Slots {
+			if s.OrderId == update.OrderId || (update.ClientOrderId != "" && s.ClientOid == update.ClientOrderId) {
+				targetSlot = s
+				break
+			}
 		}
 	}
 

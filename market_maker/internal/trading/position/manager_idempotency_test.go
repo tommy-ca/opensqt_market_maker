@@ -19,7 +19,7 @@ func init() {
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	meter := provider.Meter("test")
-	telemetry.GetGlobalMetrics().InitMetrics(meter)
+	_ = telemetry.GetGlobalMetrics().InitMetrics(meter)
 }
 
 func TestOrderUpdateIdempotency_DuplicateFill(t *testing.T) {

@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"math/rand"
 	"time"
 )
 
@@ -41,18 +42,22 @@ func Do(ctx context.Context, policy RetryPolicy, isTransient IsTransientFunc, fn
 			break
 		}
 
+		// Calculate jittered backoff: backoff + random(0, 50% of backoff)
+		jitter := time.Duration(rand.Int63n(int64(backoff / 2)))
+		sleepTime := backoff + jitter
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
-			backoff = min(backoff*2, policy.MaxBackoff)
+		case <-time.After(sleepTime):
+			backoff = minDuration(backoff*2, policy.MaxBackoff)
 		}
 	}
 
 	return err
 }
 
-func min(a, b time.Duration) time.Duration {
+func minDuration(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
 	}
