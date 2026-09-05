@@ -40,6 +40,8 @@ func (m *MockPositionManagerForRollback) Initialize(anchorPrice decimal.Decimal)
 func (m *MockPositionManagerForRollback) GetAnchorPrice() decimal.Decimal {
 	return decimal.Zero
 }
+func (m *MockPositionManagerForRollback) SetAnchorPrice(price decimal.Decimal) {
+}
 func (m *MockPositionManagerForRollback) RestoreState(slots map[string]*pb.InventorySlot) error {
 	args := m.Called(slots)
 	return args.Error(0)

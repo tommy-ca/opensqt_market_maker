@@ -18,7 +18,7 @@ type StrategySlot struct {
 	SlotStatus     pb.SlotStatus
 	OrderSide      pb.OrderSide
 	OrderPrice     decimal.Decimal
-	OrderId        int64
+	OrderID        int64
 }
 
 // InventorySlot wraps the generated pb.InventorySlot with a mutex for runtime safety
@@ -129,6 +129,7 @@ type IStrategy interface {
 type IPositionManager interface {
 	Initialize(anchorPrice decimal.Decimal) error
 	GetAnchorPrice() decimal.Decimal
+	SetAnchorPrice(price decimal.Decimal)
 	RestoreState(slots map[string]*pb.InventorySlot) error
 	ApplyActionResults(results []OrderActionResult) error
 	OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error

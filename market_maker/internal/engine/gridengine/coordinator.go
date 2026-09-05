@@ -112,6 +112,13 @@ func NewGridCoordinator(deps GridCoordinatorDeps) *GridCoordinator {
 	}
 }
 
+// SetRegimeMonitor allows injecting a mock monitor for testing
+func (c *GridCoordinator) SetRegimeMonitor(rm interface{}) {
+	if r, ok := rm.(*monitor.RegimeMonitor); ok {
+		c.regimeMonitor = r
+	}
+}
+
 func (c *GridCoordinator) Start(ctx context.Context) error {
 	c.logger.Info("Starting Grid Coordinator", "symbol", c.symbol)
 
@@ -139,6 +146,7 @@ func (c *GridCoordinator) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to restore state in slot manager: %w", err)
 		}
 		c.anchorPrice = pbu.ToGoDecimal(state.LastPrice)
+		c.slotManager.SetAnchorPrice(c.anchorPrice)
 		c.lastPrice = pbu.ToGoDecimal(state.LastPrice)
 		c.isRiskTriggered = state.IsRiskTriggered
 		c.logger.Info("Local state restored", "slots", len(state.Slots), "anchor", c.anchorPrice, "risk_triggered", c.isRiskTriggered)
