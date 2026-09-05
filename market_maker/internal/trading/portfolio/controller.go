@@ -190,68 +190,6 @@ func (c *PortfolioController) Rebalance(ctx context.Context) error {
 	return nil
 }
 
-func (c *PortfolioController) rebalanceImpl(ctx context.Context) error {
-	// Existing implementation for non-durable mode
-	opps, err := c.manager.Scan(ctx)
-	if err != nil {
-		return err
-	}
-	profile := c.marginSim.GetRiskProfile()
-	leverage := decimal.NewFromInt(3)
-	targets := c.allocator.Allocate(opps, profile.AdjustedEquity, leverage)
-
-	c.mu.Lock()
-	c.lastOpps = opps
-	c.lastTargets = targets
-	c.mu.Unlock()
-
-	targetMap := make(map[string]TargetPosition)
-	for _, t := range targets {
-		targetMap[t.Symbol] = t
-	}
-	var actions []RebalanceAction
-	c.activeEngines.Range(func(key, value interface{}) bool {
-		sym := key.(string)
-		eng := value.(PortfolioEngine)
-
-		target, ok := targetMap[sym]
-		if !ok {
-			actions = append(actions, RebalanceAction{Symbol: sym, Diff: eng.GetOrderQuantity().Neg(), Priority: 1})
-			return true
-		}
-
-		currentQty := eng.GetOrderQuantity()
-		if !c.allocator.ShouldRebalance(currentQty, target.Notional, decimal.Zero) {
-			return true
-		}
-
-		diff := target.Notional.Sub(currentQty)
-		priority := 3
-		if diff.IsNegative() {
-			priority = 2
-		}
-		actions = append(actions, RebalanceAction{Symbol: sym, Diff: diff, Priority: priority})
-		return true
-	})
-
-	for _, t := range targets {
-		if _, ok := c.activeEngines.Load(t.Symbol); !ok {
-			actions = append(actions, RebalanceAction{Symbol: t.Symbol, Diff: t.Notional, Priority: 4})
-		}
-	}
-	sort.Slice(actions, func(i, j int) bool {
-		return actions[i].Priority < actions[j].Priority
-	})
-
-	// Simplified execution for non-durable
-	for _, a := range actions {
-		if err := c.executeAction(ctx, a, targetMap[a.Symbol]); err != nil {
-			c.logger.Error("Action failed", "symbol", a.Symbol, "error", err)
-		}
-	}
-	return nil
-}
-
 func (c *PortfolioController) executeBatch(ctx context.Context, actions []RebalanceAction, targetMap map[string]TargetPosition, minP, maxP int) error {
 	var g errgroup.Group
 	for _, a := range actions {
@@ -289,7 +227,7 @@ func (c *PortfolioController) waitForMarginHealth(ctx context.Context, minHealth
 
 		// If in DBOS, use dbos.Sleep
 		if dbCtx, ok := ctx.(dbos.DBOSContext); ok {
-			dbos.Sleep(dbCtx, 2*time.Second)
+			_, _ = dbos.Sleep(dbCtx, 2*time.Second)
 		} else {
 			time.Sleep(2 * time.Second)
 		}

@@ -23,7 +23,8 @@ func (m *mockLogger) WithFields(fields map[string]interface{}) core.ILogger { re
 
 func TestBinanceSpotExchange_GetFundingRate_Mapping(t *testing.T) {
 	cfg := &config.ExchangeConfig{}
-	ex := NewBinanceSpotExchange(cfg, &mockLogger{}, nil)
+	ex, err := NewBinanceSpotExchange(cfg, &mockLogger{}, nil)
+	require.NoError(t, err)
 
 	rate, err := ex.GetFundingRate(context.Background(), "BTCUSDT")
 	require.NoError(t, err)

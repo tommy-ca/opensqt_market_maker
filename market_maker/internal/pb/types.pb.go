@@ -486,6 +486,64 @@ func (MarginMode) EnumDescriptor() ([]byte, []int) {
 	return file_opensqt_market_maker_v1_types_proto_rawDescGZIP(), []int{8}
 }
 
+type MarketRegime int32
+
+const (
+	MarketRegime_MARKET_REGIME_UNSPECIFIED     MarketRegime = 0
+	MarketRegime_MARKET_REGIME_RANGE           MarketRegime = 1
+	MarketRegime_MARKET_REGIME_BULL_TREND      MarketRegime = 2
+	MarketRegime_MARKET_REGIME_BEAR_TREND      MarketRegime = 3
+	MarketRegime_MARKET_REGIME_HIGH_VOLATILITY MarketRegime = 4
+	MarketRegime_MARKET_REGIME_THIN_MARKET     MarketRegime = 5
+)
+
+// Enum value maps for MarketRegime.
+var (
+	MarketRegime_name = map[int32]string{
+		0: "MARKET_REGIME_UNSPECIFIED",
+		1: "MARKET_REGIME_RANGE",
+		2: "MARKET_REGIME_BULL_TREND",
+		3: "MARKET_REGIME_BEAR_TREND",
+		4: "MARKET_REGIME_HIGH_VOLATILITY",
+		5: "MARKET_REGIME_THIN_MARKET",
+	}
+	MarketRegime_value = map[string]int32{
+		"MARKET_REGIME_UNSPECIFIED":     0,
+		"MARKET_REGIME_RANGE":           1,
+		"MARKET_REGIME_BULL_TREND":      2,
+		"MARKET_REGIME_BEAR_TREND":      3,
+		"MARKET_REGIME_HIGH_VOLATILITY": 4,
+		"MARKET_REGIME_THIN_MARKET":     5,
+	}
+)
+
+func (x MarketRegime) Enum() *MarketRegime {
+	p := new(MarketRegime)
+	*p = x
+	return p
+}
+
+func (x MarketRegime) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MarketRegime) Descriptor() protoreflect.EnumDescriptor {
+	return file_opensqt_market_maker_v1_types_proto_enumTypes[9].Descriptor()
+}
+
+func (MarketRegime) Type() protoreflect.EnumType {
+	return &file_opensqt_market_maker_v1_types_proto_enumTypes[9]
+}
+
+func (x MarketRegime) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MarketRegime.Descriptor instead.
+func (MarketRegime) EnumDescriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_types_proto_rawDescGZIP(), []int{9}
+}
+
 var File_opensqt_market_maker_v1_types_proto protoreflect.FileDescriptor
 
 const file_opensqt_market_maker_v1_types_proto_rawDesc = "" +
@@ -536,7 +594,14 @@ const file_opensqt_market_maker_v1_types_proto_rawDesc = "" +
 	"\x17MARGIN_MODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13MARGIN_MODE_REGULAR\x10\x01\x12\x17\n" +
 	"\x13MARGIN_MODE_UNIFIED\x10\x02\x12\x19\n" +
-	"\x15MARGIN_MODE_PORTFOLIO\x10\x03B\xbd\x01\n" +
+	"\x15MARGIN_MODE_PORTFOLIO\x10\x03*\xc4\x01\n" +
+	"\fMarketRegime\x12\x1d\n" +
+	"\x19MARKET_REGIME_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13MARKET_REGIME_RANGE\x10\x01\x12\x1c\n" +
+	"\x18MARKET_REGIME_BULL_TREND\x10\x02\x12\x1c\n" +
+	"\x18MARKET_REGIME_BEAR_TREND\x10\x03\x12!\n" +
+	"\x1dMARKET_REGIME_HIGH_VOLATILITY\x10\x04\x12\x1d\n" +
+	"\x19MARKET_REGIME_THIN_MARKET\x10\x05B\xbd\x01\n" +
 	"\x1bcom.opensqt.market_maker.v1B\n" +
 	"TypesProtoP\x01Z\x18market_maker/internal/pb\xa2\x02\x03OMX\xaa\x02\x16Opensqt.MarketMaker.V1\xca\x02\x16Opensqt\\MarketMaker\\V1\xe2\x02\"Opensqt\\MarketMaker\\V1\\GPBMetadata\xea\x02\x18Opensqt::MarketMaker::V1b\x06proto3"
 
@@ -552,7 +617,7 @@ func file_opensqt_market_maker_v1_types_proto_rawDescGZIP() []byte {
 	return file_opensqt_market_maker_v1_types_proto_rawDescData
 }
 
-var file_opensqt_market_maker_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_opensqt_market_maker_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
 var file_opensqt_market_maker_v1_types_proto_goTypes = []any{
 	(ExchangeType)(0),    // 0: opensqt.market_maker.v1.ExchangeType
 	(OrderSide)(0),       // 1: opensqt.market_maker.v1.OrderSide
@@ -563,6 +628,7 @@ var file_opensqt_market_maker_v1_types_proto_goTypes = []any{
 	(SlotStatus)(0),      // 6: opensqt.market_maker.v1.SlotStatus
 	(OrderActionType)(0), // 7: opensqt.market_maker.v1.OrderActionType
 	(MarginMode)(0),      // 8: opensqt.market_maker.v1.MarginMode
+	(MarketRegime)(0),    // 9: opensqt.market_maker.v1.MarketRegime
 }
 var file_opensqt_market_maker_v1_types_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -582,7 +648,7 @@ func file_opensqt_market_maker_v1_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opensqt_market_maker_v1_types_proto_rawDesc), len(file_opensqt_market_maker_v1_types_proto_rawDesc)),
-			NumEnums:      9,
+			NumEnums:      10,
 			NumMessages:   0,
 			NumExtensions: 0,
 			NumServices:   0,

@@ -85,7 +85,7 @@ func (s *HealthServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(health)
+	_ = json.NewEncoder(w).Encode(health)
 }
 
 func (s *HealthServer) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -105,5 +105,5 @@ func (s *HealthServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	data, _ := json.Marshal(mergedStatus)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	_, _ = w.Write(data)
 }

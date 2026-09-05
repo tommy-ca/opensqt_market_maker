@@ -7,7 +7,6 @@ import (
 	"market_maker/pkg/pbu"
 
 	"github.com/shopspring/decimal"
-	gdecimal "google.golang.org/genproto/googleapis/type/decimal"
 )
 
 type PortfolioServiceServer struct {
@@ -96,8 +95,4 @@ func (s *PortfolioServiceServer) GetMarketScores(ctx context.Context, req *pb.Ge
 		}
 	}
 	return &pb.GetMarketScoresResponse{Opportunities: pbOpps}, nil
-}
-
-func (s *PortfolioServiceServer) toPbDecimal(d decimal.Decimal) *gdecimal.Decimal {
-	return pbu.FromGoDecimal(d)
 }

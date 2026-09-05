@@ -155,14 +155,6 @@ func (s *SafetyChecker) calculateMaxPositions(
 	return safeMaxPositions
 }
 
-// estimateTradingFees estimates total trading fees for a trading session
-func (s *SafetyChecker) estimateTradingFees(orderAmount decimal.Decimal, numPositions int, feeRate float64) decimal.Decimal {
-	// Rough estimate: 2 trades per position (buy + sell) * fee rate * order amount
-	tradesPerPosition := 2.0
-	totalOrderValue := orderAmount.Mul(decimal.NewFromInt(int64(numPositions))).Mul(decimal.NewFromFloat(tradesPerPosition))
-	return totalOrderValue.Mul(decimal.NewFromFloat(feeRate))
-}
-
 // ValidateTradingParameters validates trading parameters for safety
 func (s *SafetyChecker) ValidateTradingParameters(
 	symbol string,

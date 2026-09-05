@@ -11,8 +11,6 @@ import (
 	"market_maker/pkg/pbu"
 	"net"
 
-	sdecimal "github.com/shopspring/decimal"
-	gdecimal "google.golang.org/genproto/googleapis/type/decimal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -468,14 +466,4 @@ func (s *ExchangeServer) SubscribePositions(req *pb.SubscribePositionsRequest, s
 	case err := <-errCh:
 		return err
 	}
-}
-
-// Helpers
-
-func (s *ExchangeServer) toPbDecimal(d sdecimal.Decimal) *gdecimal.Decimal {
-	return pbu.FromGoDecimal(d)
-}
-
-func (s *ExchangeServer) fromPbDecimal(d *gdecimal.Decimal) sdecimal.Decimal {
-	return pbu.ToGoDecimal(d)
 }

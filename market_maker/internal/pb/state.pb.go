@@ -35,6 +35,7 @@ type InventorySlot struct {
 	OrderFilledQty    *decimal.Decimal       `protobuf:"bytes,9,opt,name=order_filled_qty,json=orderFilledQty,proto3" json:"order_filled_qty,omitempty"`
 	SlotStatus        SlotStatus             `protobuf:"varint,10,opt,name=slot_status,json=slotStatus,proto3,enum=opensqt.market_maker.v1.SlotStatus" json:"slot_status,omitempty"`
 	PostOnlyFailCount int32                  `protobuf:"varint,11,opt,name=post_only_fail_count,json=postOnlyFailCount,proto3" json:"post_only_fail_count,omitempty"`
+	OriginalQty       *decimal.Decimal       `protobuf:"bytes,12,opt,name=original_qty,json=originalQty,proto3" json:"original_qty,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -146,16 +147,25 @@ func (x *InventorySlot) GetPostOnlyFailCount() int32 {
 	return 0
 }
 
+func (x *InventorySlot) GetOriginalQty() *decimal.Decimal {
+	if x != nil {
+		return x.OriginalQty
+	}
+	return nil
+}
+
 type State struct {
-	state          protoimpl.MessageState    `protogen:"open.v1"`
-	Slots          map[string]*InventorySlot `protobuf:"bytes,1,rep,name=slots,proto3" json:"slots,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	LastPrice      *decimal.Decimal          `protobuf:"bytes,2,opt,name=last_price,json=lastPrice,proto3" json:"last_price,omitempty"`
-	LastUpdateTime int64                     `protobuf:"varint,3,opt,name=last_update_time,json=lastUpdateTime,proto3" json:"last_update_time,omitempty"`
-	Symbol         string                    `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Version        int64                     `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
-	Checksum       string                    `protobuf:"bytes,6,opt,name=checksum,proto3" json:"checksum,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState    `protogen:"open.v1"`
+	Slots           map[string]*InventorySlot `protobuf:"bytes,1,rep,name=slots,proto3" json:"slots,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	LastPrice       *decimal.Decimal          `protobuf:"bytes,2,opt,name=last_price,json=lastPrice,proto3" json:"last_price,omitempty"`
+	LastUpdateTime  int64                     `protobuf:"varint,3,opt,name=last_update_time,json=lastUpdateTime,proto3" json:"last_update_time,omitempty"`
+	Symbol          string                    `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Version         int64                     `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
+	Checksum        string                    `protobuf:"bytes,6,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	IsRiskTriggered bool                      `protobuf:"varint,7,opt,name=is_risk_triggered,json=isRiskTriggered,proto3" json:"is_risk_triggered,omitempty"`
+	OrderIndex      map[int64]string          `protobuf:"bytes,8,rep,name=order_index,json=orderIndex,proto3" json:"order_index,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *State) Reset() {
@@ -228,6 +238,20 @@ func (x *State) GetChecksum() string {
 		return x.Checksum
 	}
 	return ""
+}
+
+func (x *State) GetIsRiskTriggered() bool {
+	if x != nil {
+		return x.IsRiskTriggered
+	}
+	return false
+}
+
+func (x *State) GetOrderIndex() map[int64]string {
+	if x != nil {
+		return x.OrderIndex
+	}
+	return nil
 }
 
 type PositionManagerSnapshot struct {
@@ -398,11 +422,239 @@ func (x *OrderAction) GetRequest() *PlaceOrderRequest {
 	return nil
 }
 
+type TargetPositionState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exchange      string                 `protobuf:"bytes,1,opt,name=exchange,proto3" json:"exchange,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Size          *decimal.Decimal       `protobuf:"bytes,3,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetPositionState) Reset() {
+	*x = TargetPositionState{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetPositionState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetPositionState) ProtoMessage() {}
+
+func (x *TargetPositionState) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetPositionState.ProtoReflect.Descriptor instead.
+func (*TargetPositionState) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TargetPositionState) GetExchange() string {
+	if x != nil {
+		return x.Exchange
+	}
+	return ""
+}
+
+func (x *TargetPositionState) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TargetPositionState) GetSize() *decimal.Decimal {
+	if x != nil {
+		return x.Size
+	}
+	return nil
+}
+
+type TargetOrder struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exchange      string                 `protobuf:"bytes,1,opt,name=exchange,proto3" json:"exchange,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Price         *decimal.Decimal       `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity      *decimal.Decimal       `protobuf:"bytes,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Side          OrderSide              `protobuf:"varint,5,opt,name=side,proto3,enum=opensqt.market_maker.v1.OrderSide" json:"side,omitempty"`
+	Type          OrderType              `protobuf:"varint,6,opt,name=type,proto3,enum=opensqt.market_maker.v1.OrderType" json:"type,omitempty"`
+	ClientOrderId string                 `protobuf:"bytes,7,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
+	ReduceOnly    bool                   `protobuf:"varint,8,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
+	PostOnly      bool                   `protobuf:"varint,9,opt,name=post_only,json=postOnly,proto3" json:"post_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetOrder) Reset() {
+	*x = TargetOrder{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetOrder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetOrder) ProtoMessage() {}
+
+func (x *TargetOrder) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetOrder.ProtoReflect.Descriptor instead.
+func (*TargetOrder) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *TargetOrder) GetExchange() string {
+	if x != nil {
+		return x.Exchange
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetPrice() *decimal.Decimal {
+	if x != nil {
+		return x.Price
+	}
+	return nil
+}
+
+func (x *TargetOrder) GetQuantity() *decimal.Decimal {
+	if x != nil {
+		return x.Quantity
+	}
+	return nil
+}
+
+func (x *TargetOrder) GetSide() OrderSide {
+	if x != nil {
+		return x.Side
+	}
+	return OrderSide_ORDER_SIDE_UNSPECIFIED
+}
+
+func (x *TargetOrder) GetType() OrderType {
+	if x != nil {
+		return x.Type
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *TargetOrder) GetClientOrderId() string {
+	if x != nil {
+		return x.ClientOrderId
+	}
+	return ""
+}
+
+func (x *TargetOrder) GetReduceOnly() bool {
+	if x != nil {
+		return x.ReduceOnly
+	}
+	return false
+}
+
+func (x *TargetOrder) GetPostOnly() bool {
+	if x != nil {
+		return x.PostOnly
+	}
+	return false
+}
+
+type TargetState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Positions     []*TargetPositionState `protobuf:"bytes,2,rep,name=positions,proto3" json:"positions,omitempty"`
+	Orders        []*TargetOrder         `protobuf:"bytes,3,rep,name=orders,proto3" json:"orders,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetState) Reset() {
+	*x = TargetState{}
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetState) ProtoMessage() {}
+
+func (x *TargetState) ProtoReflect() protoreflect.Message {
+	mi := &file_opensqt_market_maker_v1_state_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetState.ProtoReflect.Descriptor instead.
+func (*TargetState) Descriptor() ([]byte, []int) {
+	return file_opensqt_market_maker_v1_state_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TargetState) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *TargetState) GetPositions() []*TargetPositionState {
+	if x != nil {
+		return x.Positions
+	}
+	return nil
+}
+
+func (x *TargetState) GetOrders() []*TargetOrder {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
+}
+
 var File_opensqt_market_maker_v1_state_proto protoreflect.FileDescriptor
 
 const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\n" +
-	"#opensqt/market_maker/v1/state.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\x1a#opensqt/market_maker/v1/types.proto\x1a'opensqt/market_maker/v1/resources.proto\"\xfa\x04\n" +
+	"#opensqt/market_maker/v1/state.proto\x12\x17opensqt.market_maker.v1\x1a\x19google/type/decimal.proto\x1a#opensqt/market_maker/v1/types.proto\x1a'opensqt/market_maker/v1/resources.proto\"\xb3\x05\n" +
 	"\rInventorySlot\x12*\n" +
 	"\x05price\x18\x01 \x01(\v2\x14.google.type.DecimalR\x05price\x12P\n" +
 	"\x0fposition_status\x18\x02 \x01(\x0e2'.opensqt.market_maker.v1.PositionStatusR\x0epositionStatus\x127\n" +
@@ -419,7 +671,8 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\vslot_status\x18\n" +
 	" \x01(\x0e2#.opensqt.market_maker.v1.SlotStatusR\n" +
 	"slotStatus\x12/\n" +
-	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\"\xd7\x02\n" +
+	"\x14post_only_fail_count\x18\v \x01(\x05R\x11postOnlyFailCount\x127\n" +
+	"\foriginal_qty\x18\f \x01(\v2\x14.google.type.DecimalR\voriginalQty\"\x93\x04\n" +
 	"\x05State\x12?\n" +
 	"\x05slots\x18\x01 \x03(\v2).opensqt.market_maker.v1.State.SlotsEntryR\x05slots\x123\n" +
 	"\n" +
@@ -427,11 +680,17 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\x10last_update_time\x18\x03 \x01(\x03R\x0elastUpdateTime\x12\x16\n" +
 	"\x06symbol\x18\x04 \x01(\tR\x06symbol\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\x03R\aversion\x12\x1a\n" +
-	"\bchecksum\x18\x06 \x01(\tR\bchecksum\x1a`\n" +
+	"\bchecksum\x18\x06 \x01(\tR\bchecksum\x12*\n" +
+	"\x11is_risk_triggered\x18\a \x01(\bR\x0fisRiskTriggered\x12O\n" +
+	"\vorder_index\x18\b \x03(\v2..opensqt.market_maker.v1.State.OrderIndexEntryR\n" +
+	"orderIndex\x1a`\n" +
 	"\n" +
 	"SlotsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12<\n" +
-	"\x05value\x18\x02 \x01(\v2&.opensqt.market_maker.v1.InventorySlotR\x05value:\x028\x01\"\xb2\x03\n" +
+	"\x05value\x18\x02 \x01(\v2&.opensqt.market_maker.v1.InventorySlotR\x05value:\x028\x01\x1a=\n" +
+	"\x0fOrderIndexEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\x03R\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\x03\n" +
 	"\x17PositionManagerSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12Q\n" +
 	"\x05slots\x18\x02 \x03(\v2;.opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntryR\x05slots\x127\n" +
@@ -450,7 +709,26 @@ const file_opensqt_market_maker_v1_state_proto_rawDesc = "" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x19\n" +
 	"\border_id\x18\x03 \x01(\x03R\aorderId\x12*\n" +
 	"\x05price\x18\x04 \x01(\v2\x14.google.type.DecimalR\x05price\x12D\n" +
-	"\arequest\x18\x05 \x01(\v2*.opensqt.market_maker.v1.PlaceOrderRequestR\arequestB\xbd\x01\n" +
+	"\arequest\x18\x05 \x01(\v2*.opensqt.market_maker.v1.PlaceOrderRequestR\arequest\"s\n" +
+	"\x13TargetPositionState\x12\x1a\n" +
+	"\bexchange\x18\x01 \x01(\tR\bexchange\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12(\n" +
+	"\x04size\x18\x03 \x01(\v2\x14.google.type.DecimalR\x04size\"\xf5\x02\n" +
+	"\vTargetOrder\x12\x1a\n" +
+	"\bexchange\x18\x01 \x01(\tR\bexchange\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12*\n" +
+	"\x05price\x18\x03 \x01(\v2\x14.google.type.DecimalR\x05price\x120\n" +
+	"\bquantity\x18\x04 \x01(\v2\x14.google.type.DecimalR\bquantity\x126\n" +
+	"\x04side\x18\x05 \x01(\x0e2\".opensqt.market_maker.v1.OrderSideR\x04side\x126\n" +
+	"\x04type\x18\x06 \x01(\x0e2\".opensqt.market_maker.v1.OrderTypeR\x04type\x12&\n" +
+	"\x0fclient_order_id\x18\a \x01(\tR\rclientOrderId\x12\x1f\n" +
+	"\vreduce_only\x18\b \x01(\bR\n" +
+	"reduceOnly\x12\x1b\n" +
+	"\tpost_only\x18\t \x01(\bR\bpostOnly\"\xb5\x01\n" +
+	"\vTargetState\x12\x1c\n" +
+	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12J\n" +
+	"\tpositions\x18\x02 \x03(\v2,.opensqt.market_maker.v1.TargetPositionStateR\tpositions\x12<\n" +
+	"\x06orders\x18\x03 \x03(\v2$.opensqt.market_maker.v1.TargetOrderR\x06ordersB\xbd\x01\n" +
 	"\x1bcom.opensqt.market_maker.v1B\n" +
 	"StateProtoP\x01Z\x18market_maker/internal/pb\xa2\x02\x03OMX\xaa\x02\x16Opensqt.MarketMaker.V1\xca\x02\x16Opensqt\\MarketMaker\\V1\xe2\x02\"Opensqt\\MarketMaker\\V1\\GPBMetadata\xea\x02\x18Opensqt::MarketMaker::V1b\x06proto3"
 
@@ -466,45 +744,59 @@ func file_opensqt_market_maker_v1_state_proto_rawDescGZIP() []byte {
 	return file_opensqt_market_maker_v1_state_proto_rawDescData
 }
 
-var file_opensqt_market_maker_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_opensqt_market_maker_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_opensqt_market_maker_v1_state_proto_goTypes = []any{
 	(*InventorySlot)(nil),           // 0: opensqt.market_maker.v1.InventorySlot
 	(*State)(nil),                   // 1: opensqt.market_maker.v1.State
 	(*PositionManagerSnapshot)(nil), // 2: opensqt.market_maker.v1.PositionManagerSnapshot
 	(*OrderAction)(nil),             // 3: opensqt.market_maker.v1.OrderAction
-	nil,                             // 4: opensqt.market_maker.v1.State.SlotsEntry
-	nil,                             // 5: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
-	(*decimal.Decimal)(nil),         // 6: google.type.Decimal
-	(PositionStatus)(0),             // 7: opensqt.market_maker.v1.PositionStatus
-	(OrderSide)(0),                  // 8: opensqt.market_maker.v1.OrderSide
-	(OrderStatus)(0),                // 9: opensqt.market_maker.v1.OrderStatus
-	(SlotStatus)(0),                 // 10: opensqt.market_maker.v1.SlotStatus
-	(OrderActionType)(0),            // 11: opensqt.market_maker.v1.OrderActionType
-	(*PlaceOrderRequest)(nil),       // 12: opensqt.market_maker.v1.PlaceOrderRequest
+	(*TargetPositionState)(nil),     // 4: opensqt.market_maker.v1.TargetPositionState
+	(*TargetOrder)(nil),             // 5: opensqt.market_maker.v1.TargetOrder
+	(*TargetState)(nil),             // 6: opensqt.market_maker.v1.TargetState
+	nil,                             // 7: opensqt.market_maker.v1.State.SlotsEntry
+	nil,                             // 8: opensqt.market_maker.v1.State.OrderIndexEntry
+	nil,                             // 9: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
+	(*decimal.Decimal)(nil),         // 10: google.type.Decimal
+	(PositionStatus)(0),             // 11: opensqt.market_maker.v1.PositionStatus
+	(OrderSide)(0),                  // 12: opensqt.market_maker.v1.OrderSide
+	(OrderStatus)(0),                // 13: opensqt.market_maker.v1.OrderStatus
+	(SlotStatus)(0),                 // 14: opensqt.market_maker.v1.SlotStatus
+	(OrderActionType)(0),            // 15: opensqt.market_maker.v1.OrderActionType
+	(*PlaceOrderRequest)(nil),       // 16: opensqt.market_maker.v1.PlaceOrderRequest
+	(OrderType)(0),                  // 17: opensqt.market_maker.v1.OrderType
 }
 var file_opensqt_market_maker_v1_state_proto_depIdxs = []int32{
-	6,  // 0: opensqt.market_maker.v1.InventorySlot.price:type_name -> google.type.Decimal
-	7,  // 1: opensqt.market_maker.v1.InventorySlot.position_status:type_name -> opensqt.market_maker.v1.PositionStatus
-	6,  // 2: opensqt.market_maker.v1.InventorySlot.position_qty:type_name -> google.type.Decimal
-	8,  // 3: opensqt.market_maker.v1.InventorySlot.order_side:type_name -> opensqt.market_maker.v1.OrderSide
-	9,  // 4: opensqt.market_maker.v1.InventorySlot.order_status:type_name -> opensqt.market_maker.v1.OrderStatus
-	6,  // 5: opensqt.market_maker.v1.InventorySlot.order_price:type_name -> google.type.Decimal
-	6,  // 6: opensqt.market_maker.v1.InventorySlot.order_filled_qty:type_name -> google.type.Decimal
-	10, // 7: opensqt.market_maker.v1.InventorySlot.slot_status:type_name -> opensqt.market_maker.v1.SlotStatus
-	4,  // 8: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
-	6,  // 9: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
-	5,  // 10: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
-	6,  // 11: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
-	11, // 12: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
-	6,  // 13: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
-	12, // 14: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
-	0,  // 15: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	0,  // 16: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	10, // 0: opensqt.market_maker.v1.InventorySlot.price:type_name -> google.type.Decimal
+	11, // 1: opensqt.market_maker.v1.InventorySlot.position_status:type_name -> opensqt.market_maker.v1.PositionStatus
+	10, // 2: opensqt.market_maker.v1.InventorySlot.position_qty:type_name -> google.type.Decimal
+	12, // 3: opensqt.market_maker.v1.InventorySlot.order_side:type_name -> opensqt.market_maker.v1.OrderSide
+	13, // 4: opensqt.market_maker.v1.InventorySlot.order_status:type_name -> opensqt.market_maker.v1.OrderStatus
+	10, // 5: opensqt.market_maker.v1.InventorySlot.order_price:type_name -> google.type.Decimal
+	10, // 6: opensqt.market_maker.v1.InventorySlot.order_filled_qty:type_name -> google.type.Decimal
+	14, // 7: opensqt.market_maker.v1.InventorySlot.slot_status:type_name -> opensqt.market_maker.v1.SlotStatus
+	10, // 8: opensqt.market_maker.v1.InventorySlot.original_qty:type_name -> google.type.Decimal
+	7,  // 9: opensqt.market_maker.v1.State.slots:type_name -> opensqt.market_maker.v1.State.SlotsEntry
+	10, // 10: opensqt.market_maker.v1.State.last_price:type_name -> google.type.Decimal
+	8,  // 11: opensqt.market_maker.v1.State.order_index:type_name -> opensqt.market_maker.v1.State.OrderIndexEntry
+	9,  // 12: opensqt.market_maker.v1.PositionManagerSnapshot.slots:type_name -> opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry
+	10, // 13: opensqt.market_maker.v1.PositionManagerSnapshot.anchor_price:type_name -> google.type.Decimal
+	15, // 14: opensqt.market_maker.v1.OrderAction.type:type_name -> opensqt.market_maker.v1.OrderActionType
+	10, // 15: opensqt.market_maker.v1.OrderAction.price:type_name -> google.type.Decimal
+	16, // 16: opensqt.market_maker.v1.OrderAction.request:type_name -> opensqt.market_maker.v1.PlaceOrderRequest
+	10, // 17: opensqt.market_maker.v1.TargetPositionState.size:type_name -> google.type.Decimal
+	10, // 18: opensqt.market_maker.v1.TargetOrder.price:type_name -> google.type.Decimal
+	10, // 19: opensqt.market_maker.v1.TargetOrder.quantity:type_name -> google.type.Decimal
+	12, // 20: opensqt.market_maker.v1.TargetOrder.side:type_name -> opensqt.market_maker.v1.OrderSide
+	17, // 21: opensqt.market_maker.v1.TargetOrder.type:type_name -> opensqt.market_maker.v1.OrderType
+	4,  // 22: opensqt.market_maker.v1.TargetState.positions:type_name -> opensqt.market_maker.v1.TargetPositionState
+	5,  // 23: opensqt.market_maker.v1.TargetState.orders:type_name -> opensqt.market_maker.v1.TargetOrder
+	0,  // 24: opensqt.market_maker.v1.State.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	0,  // 25: opensqt.market_maker.v1.PositionManagerSnapshot.SlotsEntry.value:type_name -> opensqt.market_maker.v1.InventorySlot
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_opensqt_market_maker_v1_state_proto_init() }
@@ -520,7 +812,7 @@ func file_opensqt_market_maker_v1_state_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opensqt_market_maker_v1_state_proto_rawDesc), len(file_opensqt_market_maker_v1_state_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

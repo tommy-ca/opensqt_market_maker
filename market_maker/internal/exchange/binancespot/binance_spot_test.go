@@ -31,7 +31,8 @@ func TestBinanceSpotExchange_Initialization(t *testing.T) {
 	logger := &MockLogger{}
 	pool := concurrency.NewWorkerPool(concurrency.PoolConfig{}, logger)
 
-	exchange := NewBinanceSpotExchange(cfg, logger, pool)
+	exchange, err := NewBinanceSpotExchange(cfg, logger, pool)
+	assert.NoError(t, err)
 	assert.NotNil(t, exchange)
 	assert.Equal(t, "binance_spot", exchange.GetName())
 }
@@ -40,7 +41,8 @@ func TestBinanceSpotExchange_Constants(t *testing.T) {
 	cfg := &config.ExchangeConfig{}
 	logger := &MockLogger{}
 	pool := concurrency.NewWorkerPool(concurrency.PoolConfig{}, logger)
-	exchange := NewBinanceSpotExchange(cfg, logger, pool)
+	exchange, err := NewBinanceSpotExchange(cfg, logger, pool)
+	assert.NoError(t, err)
 
 	assert.Equal(t, "BTC", exchange.GetBaseAsset())
 	assert.Equal(t, "USDT", exchange.GetQuoteAsset())
@@ -52,7 +54,8 @@ func TestBinanceSpotExchange_GetFundingRate(t *testing.T) {
 	cfg := &config.ExchangeConfig{}
 	logger := &MockLogger{}
 	pool := concurrency.NewWorkerPool(concurrency.PoolConfig{}, logger)
-	exchange := NewBinanceSpotExchange(cfg, logger, pool)
+	exchange, err := NewBinanceSpotExchange(cfg, logger, pool)
+	assert.NoError(t, err)
 
 	rate, err := exchange.GetFundingRate(context.Background(), "BTCUSDT")
 	assert.NoError(t, err)
@@ -72,7 +75,8 @@ func TestBinanceSpotExchange_SignRequest(t *testing.T) {
 	}
 	logger := &MockLogger{}
 	pool := concurrency.NewWorkerPool(concurrency.PoolConfig{}, logger)
-	exchange := NewBinanceSpotExchange(cfg, logger, pool)
+	exchange, err := NewBinanceSpotExchange(cfg, logger, pool)
+	assert.NoError(t, err)
 
 	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/account", nil)
 	assert.NoError(t, err)

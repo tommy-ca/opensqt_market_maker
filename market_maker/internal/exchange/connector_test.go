@@ -31,7 +31,7 @@ func TestUnifiedConnector_MultiExchange(t *testing.T) {
 			srv := NewExchangeServer(mockExch, logger)
 			pb.RegisterExchangeServiceServer(s, srv)
 
-			go s.Serve(lis)
+			go func() { _ = s.Serve(lis) }()
 			defer s.Stop()
 
 			// Connect client

@@ -1,18 +1,3 @@
-// Package position provides position management functionality with slot-based trading logic
-//
-// LOCK ORDERING HIERARCHY:
-// To prevent deadlocks, locks MUST be acquired in this order:
-// 1. spm.mu (SuperPositionManager global lock)
-// 2. slot.Mu (individual InventorySlot locks)
-//
-// RULES:
-//   - NEVER acquire spm.mu while holding any slot.Mu
-//   - When updating both global state (maps) and slot state:
-//     a) Acquire spm.mu, read what you need, release spm.mu
-//     b) Acquire slot.Mu, modify slot, release slot.Mu
-//     c) Re-acquire spm.mu to update maps, release spm.mu
-//   - Use RLock when only reading to allow concurrent access
-//   - Keep critical sections as short as possible
 package position
 
 import (
@@ -20,9 +5,9 @@ import (
 	"fmt"
 	"market_maker/internal/core"
 	"market_maker/internal/pb"
-	"market_maker/pkg/concurrency"
+	"market_maker/internal/trading"
+	"market_maker/internal/trading/grid"
 	"market_maker/pkg/pbu"
-	"market_maker/pkg/telemetry"
 	"market_maker/pkg/tradingutils"
 	"sync"
 	"sync/atomic"
@@ -31,14 +16,14 @@ import (
 	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"google.golang.org/protobuf/proto"
 )
 
-// SuperPositionManager implements the IPositionManager interface
+// SuperPositionManager manages multiple grid levels and their corresponding orders/positions
 type SuperPositionManager struct {
-	// Configuration
-	symbol         string
-	exchangeName   string
+	symbol       string
+	exchangeName string
+
+	// Config
 	priceInterval  decimal.Decimal
 	orderQuantity  decimal.Decimal
 	minOrderValue  decimal.Decimal
@@ -47,50 +32,36 @@ type SuperPositionManager struct {
 	priceDecimals  int
 	qtyDecimals    int
 
-	// Dependencies
-	strategy       core.IStrategy
-	riskMonitor    core.IRiskMonitor
-	circuitBreaker core.ICircuitBreaker
-	logger         core.ILogger
-
-	// Slot management
-	slots       map[string]*core.InventorySlot
-	orderMap    map[int64]*core.InventorySlot  // O(1) lookup for order updates
-	clientOMap  map[string]*core.InventorySlot // O(1) lookup for order updates
-	anchorPrice decimal.Decimal
+	strategy *grid.Strategy
+	monitor  core.IRiskMonitor
+	store    core.IStateStore
+	logger   core.ILogger
 
 	// State tracking
-	marginLockUntil    int64 // atomic timestamp
-	marginLockDuration time.Duration
+	anchorPrice decimal.Decimal
+	slots       map[string]*core.InventorySlot // Price -> Slot
+	orderMap    map[int64]*core.InventorySlot  // OrderID -> Slot
+	clientOMap  map[string]*core.InventorySlot // ClientOID -> Slot
+	mu          sync.RWMutex
 
-	// Idempotency tracking
-	processedUpdates map[string]time.Time // updateKey → timestamp for duplicate detection
+	// Stats
+	// totalSlots removed in favor of len(slots)
+	activeSlots int64
+	realizedPnL decimal.Decimal
+	historyMu   sync.RWMutex
+
+	// Idempotency
+	processedUpdates map[string]time.Time
 	updateMu         sync.RWMutex
 
-	// Concurrency control
-	mu sync.RWMutex
-
-	// Statistics
-	totalSlots  int64 // atomic
-	activeSlots int64 // atomic
-
-	// OTel
-	meter metric.Meter
-
-	// Update Listeners
+	// Callbacks for services
 	updateCallbacks []func(*pb.PositionUpdate)
 	callbackMu      sync.RWMutex
-	broadcastPool   *concurrency.WorkerPool
 
-	// Introspection data
-	fills           []*pb.Fill
-	orderHistory    []*pb.Order
-	positionHistory []*pb.PositionSnapshotData
-	realizedPnL     decimal.Decimal
-	historyMu       sync.RWMutex
+	// Metrics
+	meter metric.Meter
 }
 
-// NewSuperPositionManager creates a new position manager instance
 func NewSuperPositionManager(
 	symbol string,
 	exchangeName string,
@@ -101,158 +72,155 @@ func NewSuperPositionManager(
 	sellWindowSize int,
 	priceDecimals int,
 	qtyDecimals int,
-	strategy core.IStrategy,
-	riskMonitor core.IRiskMonitor,
-	circuitBreaker core.ICircuitBreaker,
+	strat *grid.Strategy,
+	monitor core.IRiskMonitor,
+	store core.IStateStore,
 	logger core.ILogger,
-	broadcastPool *concurrency.WorkerPool, // Optional pool for notifications
+	meter metric.Meter,
 ) *SuperPositionManager {
-
-	meter := telemetry.GetMeter("position-manager")
 	spm := &SuperPositionManager{
-		symbol:             symbol,
-		exchangeName:       exchangeName,
-		priceInterval:      decimal.NewFromFloat(priceInterval),
-		orderQuantity:      decimal.NewFromFloat(orderQuantity),
-		minOrderValue:      decimal.NewFromFloat(minOrderValue),
-		buyWindowSize:      buyWindowSize,
-		sellWindowSize:     sellWindowSize,
-		priceDecimals:      priceDecimals,
-		qtyDecimals:        qtyDecimals,
-		strategy:           strategy,
-		riskMonitor:        riskMonitor,
-		circuitBreaker:     circuitBreaker,
-		logger:             logger.WithField("component", "position_manager").WithField("symbol", symbol),
-		slots:              make(map[string]*core.InventorySlot),
-		orderMap:           make(map[int64]*core.InventorySlot),
-		clientOMap:         make(map[string]*core.InventorySlot),
-		marginLockDuration: 10 * time.Second, // Default 10 seconds
-		processedUpdates:   make(map[string]time.Time),
-		meter:              meter,
-		broadcastPool:      broadcastPool,
+		symbol:           symbol,
+		exchangeName:     exchangeName,
+		priceInterval:    decimal.NewFromFloat(priceInterval),
+		orderQuantity:    decimal.NewFromFloat(orderQuantity),
+		minOrderValue:    decimal.NewFromFloat(minOrderValue),
+		buyWindowSize:    buyWindowSize,
+		sellWindowSize:   sellWindowSize,
+		priceDecimals:    priceDecimals,
+		qtyDecimals:      qtyDecimals,
+		strategy:         strat,
+		monitor:          monitor,
+		store:            store,
+		logger:           logger.WithField("component", "position_manager").WithField("symbol", symbol),
+		slots:            make(map[string]*core.InventorySlot),
+		orderMap:         make(map[int64]*core.InventorySlot),
+		clientOMap:       make(map[string]*core.InventorySlot),
+		processedUpdates: make(map[string]time.Time),
+		meter:            meter,
 	}
 
+	if meter != nil {
+		spm.registerMetrics(meter, symbol)
+	}
+
+	return spm
+}
+
+func (spm *SuperPositionManager) registerMetrics(meter metric.Meter, symbol string) {
 	// Register observable gauges
 	commonAttrs := metric.WithAttributes(attribute.String("symbol", symbol))
 
-	meter.Int64ObservableGauge("position_total_slots",
+	_, _ = meter.Int64ObservableGauge("position_total_slots",
 		metric.WithDescription("Total number of grid slots"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
-			obs.Observe(atomic.LoadInt64(&spm.totalSlots), commonAttrs)
+			spm.mu.RLock()
+			defer spm.mu.RUnlock()
+			obs.Observe(int64(len(spm.slots)), commonAttrs)
 			return nil
 		}))
 
-	meter.Int64ObservableGauge("position_active_slots",
+	_, _ = meter.Int64ObservableGauge("position_active_slots",
 		metric.WithDescription("Number of active grid slots (locked)"),
 		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
 			obs.Observe(atomic.LoadInt64(&spm.activeSlots), commonAttrs)
 			return nil
 		}))
-
-	meter.Int64ObservableGauge("position_margin_locked",
-		metric.WithDescription("Whether margin is currently locked (1 for true, 0 for false)"),
-		metric.WithInt64Callback(func(_ context.Context, obs metric.Int64Observer) error {
-			val := int64(0)
-			if spm.isMarginLocked() {
-				val = 1
-			}
-			obs.Observe(val, commonAttrs)
-			return nil
-		}))
-
-	// Start background cleanup of old processed updates
-	go spm.cleanupProcessedUpdates()
-
-	return spm
 }
 
-// Initialize sets up the initial grid around the anchor price
 func (spm *SuperPositionManager) Initialize(anchorPrice decimal.Decimal) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
 
 	spm.logger.Info("Initializing position manager",
-		"anchor_price", anchorPrice,
-		"price_interval", spm.priceInterval,
+		"anchor_price", anchorPrice.String(),
+		"price_interval", spm.priceInterval.String(),
 		"buy_window", spm.buyWindowSize,
 		"sell_window", spm.sellWindowSize)
 
 	spm.anchorPrice = anchorPrice
-	spm.slots = make(map[string]*core.InventorySlot)
-	spm.orderMap = make(map[int64]*core.InventorySlot)
-	spm.clientOMap = make(map[string]*core.InventorySlot)
 
+	// Pre-create slots
 	buyPrices := tradingutils.CalculatePriceLevels(anchorPrice, spm.priceInterval.Neg(), spm.buyWindowSize)
 	sellPrices := tradingutils.CalculatePriceLevels(anchorPrice, spm.priceInterval, spm.sellWindowSize)
 
 	for _, price := range buyPrices {
+		roundedPrice := tradingutils.RoundPrice(price, spm.priceDecimals)
+		theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
 		slot := &core.InventorySlot{
 			InventorySlot: &pb.InventorySlot{
-				Price:          pbu.FromGoDecimal(tradingutils.RoundPrice(price, spm.priceDecimals)),
+				Price:          pbu.FromGoDecimal(roundedPrice),
 				PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 				PositionQty:    pbu.FromGoDecimal(decimal.Zero),
 				OrderId:        0, ClientOid: "", OrderSide: pb.OrderSide_ORDER_SIDE_BUY,
 				OrderStatus: pb.OrderStatus_ORDER_STATUS_NEW, OrderPrice: pbu.FromGoDecimal(decimal.Zero),
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
+				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
+			PriceDec:          roundedPrice,
+			OrderPriceDec:     decimal.Zero,
+			PositionQtyDec:    decimal.Zero,
+			OriginalQtyDec:    theoryQty,
+			OrderFilledQtyDec: decimal.Zero,
 		}
-		spm.slots[pbu.ToGoDecimal(slot.Price).String()] = slot
-		atomic.AddInt64(&spm.totalSlots, 1)
+		spm.slots[roundedPrice.String()] = slot
 	}
 
 	for _, price := range sellPrices {
+		roundedPrice := tradingutils.RoundPrice(price, spm.priceDecimals)
+		theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
 		slot := &core.InventorySlot{
 			InventorySlot: &pb.InventorySlot{
-				Price:          pbu.FromGoDecimal(tradingutils.RoundPrice(price, spm.priceDecimals)),
+				Price:          pbu.FromGoDecimal(roundedPrice),
 				PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
 				PositionQty:    pbu.FromGoDecimal(decimal.Zero),
 				OrderId:        0, ClientOid: "", OrderSide: pb.OrderSide_ORDER_SIDE_SELL,
 				OrderStatus: pb.OrderStatus_ORDER_STATUS_NEW, OrderPrice: pbu.FromGoDecimal(decimal.Zero),
 				OrderFilledQty: pbu.FromGoDecimal(decimal.Zero), SlotStatus: pb.SlotStatus_SLOT_STATUS_FREE,
+				OriginalQty: pbu.FromGoDecimal(theoryQty),
 			},
+			PriceDec:          roundedPrice,
+			OrderPriceDec:     decimal.Zero,
+			PositionQtyDec:    decimal.Zero,
+			OriginalQtyDec:    theoryQty,
+			OrderFilledQtyDec: decimal.Zero,
 		}
-		spm.slots[pbu.ToGoDecimal(slot.Price).String()] = slot
-		atomic.AddInt64(&spm.totalSlots, 1)
+		spm.slots[roundedPrice.String()] = slot
 	}
 
 	return nil
 }
 
-// RestoreState restores the position manager state from a snapshot
+func (spm *SuperPositionManager) GetAnchorPrice() decimal.Decimal {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+	return spm.anchorPrice
+}
+
 func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-
-	if len(slots) == 0 {
-		return fmt.Errorf("cannot restore empty state")
-	}
 
 	spm.slots = make(map[string]*core.InventorySlot)
 	spm.orderMap = make(map[int64]*core.InventorySlot)
 	spm.clientOMap = make(map[string]*core.InventorySlot)
 
-	totalSlots := int64(0)
-	for priceKey, slot := range slots {
+	for k, s := range slots {
 		newSlot := &core.InventorySlot{
-			InventorySlot: &pb.InventorySlot{
-				Price: slot.Price, PositionStatus: slot.PositionStatus,
-				PositionQty: slot.PositionQty, OrderId: slot.OrderId,
-				ClientOid: slot.ClientOid, OrderSide: slot.OrderSide,
-				OrderStatus: slot.OrderStatus, OrderPrice: slot.OrderPrice,
-				OrderFilledQty: slot.OrderFilledQty, SlotStatus: slot.SlotStatus,
-				PostOnlyFailCount: slot.PostOnlyFailCount,
-			},
+			InventorySlot:     s,
+			PriceDec:          pbu.ToGoDecimal(s.Price),
+			OrderPriceDec:     pbu.ToGoDecimal(s.OrderPrice),
+			PositionQtyDec:    pbu.ToGoDecimal(s.PositionQty),
+			OriginalQtyDec:    pbu.ToGoDecimal(s.OriginalQty),
+			OrderFilledQtyDec: pbu.ToGoDecimal(s.OrderFilledQty),
 		}
-		spm.slots[priceKey] = newSlot
+		spm.slots[k] = newSlot
 		if newSlot.OrderId != 0 {
 			spm.orderMap[newSlot.OrderId] = newSlot
 		}
 		if newSlot.ClientOid != "" {
 			spm.clientOMap[newSlot.ClientOid] = newSlot
 		}
-		totalSlots++
 	}
-	atomic.StoreInt64(&spm.totalSlots, totalSlots)
 	return nil
 }
 
@@ -260,8 +228,6 @@ func (spm *SuperPositionManager) RestoreState(slots map[string]*pb.InventorySlot
 func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decimal.Decimal) {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-
-	defer spm.updateTelemetry() // Update telemetry after restore
 
 	if totalPosition.LessThanOrEqual(decimal.Zero) {
 		return
@@ -318,8 +284,10 @@ func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decim
 
 		slot := spm.getOrCreateSlotLocked(price)
 
+		slot.Mu.Lock()
 		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
 		slot.PositionQty = pbu.FromGoDecimal(slotQty)
+		slot.PositionQtyDec = slotQty
 
 		slot.OrderId = 0
 		slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
@@ -327,225 +295,192 @@ func (spm *SuperPositionManager) RestoreFromExchangePosition(totalPosition decim
 		slot.ClientOid = ""
 		slot.OrderFilledQty = pbu.FromGoDecimal(decimal.Zero)
 		slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+		slot.Mu.Unlock()
 
 		allocatedQty = allocatedQty.Add(slotQty)
 	}
 }
 
-// CalculateAdjustments calculates required order adjustments by delegating to the strategy
-func (spm *SuperPositionManager) CalculateAdjustments(ctx context.Context, newPrice decimal.Decimal) ([]*pb.OrderAction, error) {
-	if spm.isMarginLocked() {
-		return nil, nil
-	}
-
-	if spm.strategy == nil {
-		return nil, fmt.Errorf("strategy not set")
-	}
-
-	spm.mu.RLock()
-	anchorPrice := spm.anchorPrice
-	slots := spm.slots
-	spm.mu.RUnlock()
-
-	actions, err := spm.strategy.CalculateActions(ctx, slots, anchorPrice, newPrice)
-	if err != nil {
-		return nil, err
-	}
-
-	// Post-processing: Ensure slots exist for any PLACE actions returned by strategy
+func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-
-	for _, action := range actions {
-		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-			price := pbu.ToGoDecimal(action.Price)
-			slot := spm.getOrCreateSlotLocked(price)
-
-			// Proactively update slot state if it's a PLACE action
-			// This matches legacy behavior where slot became PENDING immediately
-			slot.Mu.Lock()
-			if action.Request != nil {
-				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
-				slot.OrderPrice = action.Request.Price
-				slot.OrderSide = action.Request.Side
-				slot.ClientOid = action.Request.ClientOrderId
-				spm.clientOMap[slot.ClientOid] = slot
-			}
-			slot.Mu.Unlock()
-		}
-	}
-
-	return actions, nil
-}
-
-// ApplyActionResults updates the internal state based on the results of executed actions
-//
-// LOCK ORDERING RULE: Always acquire locks in this order:
-// 1. spm.mu (global lock)
-// 2. slot.Mu (individual slot locks)
-// NEVER acquire spm.mu while holding slot.Mu to prevent deadlocks
-func (spm *SuperPositionManager) ApplyActionResults(results []core.OrderActionResult) error {
-	// Phase 1: Collect slot updates while holding global lock
-	type slotUpdate struct {
-		slot     *core.InventorySlot
-		result   core.OrderActionResult
-		priceKey string
-	}
-
-	spm.mu.Lock()
-	updates := make([]slotUpdate, 0, len(results))
 
 	for _, res := range results {
 		priceKey := pbu.ToGoDecimal(res.Action.Price).String()
 		slot, exists := spm.slots[priceKey]
-		if exists {
-			updates = append(updates, slotUpdate{
-				slot:     slot,
-				result:   res,
-				priceKey: priceKey,
-			})
+		if !exists {
+			continue
 		}
-	}
-	spm.mu.Unlock()
 
-	// Phase 2: Apply updates with per-slot locking
-	for _, u := range updates {
-		u.slot.Mu.Lock()
-
-		if u.result.Error != nil {
-			// Handle error case
-			if u.result.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
-				if u.result.Action.Request != nil && u.slot.ClientOid == u.result.Action.Request.ClientOrderId {
-					// Update slot state
-					u.slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
-					u.slot.OrderPrice = pbu.FromGoDecimal(decimal.Zero)
-					clientOID := u.slot.ClientOid
-					u.slot.ClientOid = ""
-					u.slot.OrderSide = pb.OrderSide_ORDER_SIDE_UNSPECIFIED
-
-					u.slot.Mu.Unlock()
-
-					// Update maps with global lock
-					spm.mu.Lock()
-					delete(spm.clientOMap, clientOID)
-					spm.mu.Unlock()
-					continue
-				}
+		slot.Mu.Lock()
+		if res.Error != nil {
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+		} else if res.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && res.Order != nil {
+			slot.OrderId = res.Order.OrderId
+			slot.ClientOid = res.Order.ClientOrderId
+			slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
+			slot.OrderSide = res.Order.Side
+			slot.OrderPrice = res.Order.Price
+			slot.OrderPriceDec = pbu.ToGoDecimal(res.Order.Price)
+			slot.OrderStatus = res.Order.Status
+			slot.OriginalQty = res.Order.Quantity
+			spm.orderMap[res.Order.OrderId] = slot
+			if res.Order.ClientOrderId != "" {
+				spm.clientOMap[res.Order.ClientOrderId] = slot
 			}
-			u.slot.Mu.Unlock()
-		} else if u.result.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE && u.result.Order != nil {
-			// Handle successful PLACE action
-			u.slot.OrderId = u.result.Order.OrderId
-			u.slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
-			if u.result.Order.Status != pb.OrderStatus_ORDER_STATUS_UNSPECIFIED {
-				u.slot.OrderStatus = u.result.Order.Status
-			}
-			u.slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_LOCKED
-
-			// Use order fields if present, otherwise preserve existing slot values
-			if u.result.Order.Price != nil {
-				u.slot.OrderPrice = u.result.Order.Price
-			}
-			if u.result.Order.Side != pb.OrderSide_ORDER_SIDE_UNSPECIFIED {
-				u.slot.OrderSide = u.result.Order.Side
-			}
-			if u.result.Order.ClientOrderId != "" {
-				u.slot.ClientOid = u.result.Order.ClientOrderId
-			}
-
-			orderID := u.result.Order.OrderId
-			clientOrderID := u.slot.ClientOid
-			side := u.slot.OrderSide
-			orderType := u.result.Order.Type
-
-			u.slot.Mu.Unlock()
-
-			// Update maps with global lock
-			spm.mu.Lock()
-			spm.orderMap[orderID] = u.slot
-			if clientOrderID != "" {
-				spm.clientOMap[clientOrderID] = u.slot
-			}
-			spm.mu.Unlock()
-
-			// Telemetry: Order placed
-			telemetry.GetGlobalMetrics().OrdersPlacedTotal.Add(context.Background(), 1,
-				metric.WithAttributes(
-					attribute.String("symbol", spm.symbol),
-					attribute.String("side", side.String()),
-					attribute.String("type", orderType.String()),
-				))
-
-			// Record in order history
-			spm.historyMu.Lock()
-			spm.orderHistory = append(spm.orderHistory, u.result.Order)
-			if len(spm.orderHistory) > 1000 {
-				spm.orderHistory = spm.orderHistory[1:]
-			}
-			spm.historyMu.Unlock()
-		} else if u.result.Action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL {
-			// Handle CANCEL action
-			orderID := u.result.Action.OrderId
-			clientOID := u.slot.ClientOid
-
-			u.slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
-			u.slot.OrderId = 0
-			u.slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
-			u.slot.OrderPrice = pbu.FromGoDecimal(decimal.Zero)
-			u.slot.ClientOid = ""
-			u.slot.OrderSide = pb.OrderSide_ORDER_SIDE_UNSPECIFIED
-
-			u.slot.Mu.Unlock()
-
-			// Update maps with global lock
-			spm.mu.Lock()
-			delete(spm.orderMap, orderID)
-			if clientOID != "" {
-				delete(spm.clientOMap, clientOID)
-			}
-			spm.mu.Unlock()
-		} else {
-			u.slot.Mu.Unlock()
 		}
+		slot.Mu.Unlock()
 	}
-
-	spm.mu.Lock()
-	spm.updateTelemetry()
-	spm.mu.Unlock()
-
 	return nil
 }
 
 func (spm *SuperPositionManager) OnOrderUpdate(ctx context.Context, update *pb.OrderUpdate) error {
+	// 1. Global Idempotency Check
+	// We skip this for partial fills because multiple updates with same status are expected
+	if update.Status != pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		updateKey := fmt.Sprintf("%d-%s", update.OrderId, update.Status.String())
+		spm.updateMu.Lock()
+		if lastSeen, exists := spm.processedUpdates[updateKey]; exists {
+			if time.Since(lastSeen) < 5*time.Minute {
+				spm.updateMu.Unlock()
+				return nil
+			}
+		}
+		spm.processedUpdates[updateKey] = time.Now()
+		spm.updateMu.Unlock()
+	}
+
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
 
-	defer spm.updateTelemetry() // Update active orders count on update
-
-	targetSlot := spm.orderMap[update.OrderId]
-	if targetSlot == nil && update.ClientOrderId != "" {
-		targetSlot = spm.clientOMap[update.ClientOrderId]
+	slot, ok := spm.orderMap[update.OrderId]
+	if !ok {
+		slot, ok = spm.clientOMap[update.ClientOrderId]
 	}
 
-	if targetSlot == nil {
-		return fmt.Errorf("slot not found")
+	if !ok {
+		return nil
 	}
 
-	targetSlot.Mu.Lock()
-	defer targetSlot.Mu.Unlock()
+	slot.Mu.Lock()
+	defer slot.Mu.Unlock()
 
-	switch update.Status {
-	case pb.OrderStatus_ORDER_STATUS_FILLED:
-		spm.handleOrderFilledLocked(targetSlot, update)
-	case pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED:
-		spm.handleOrderPartialFill(targetSlot, update)
-	case pb.OrderStatus_ORDER_STATUS_CANCELED:
-		spm.handleOrderCanceledLocked(targetSlot, update)
-	case pb.OrderStatus_ORDER_STATUS_REJECTED:
-		spm.handleOrderRejected(update)
+	// 2. Slot-level Idempotency Check for partial fills
+	if update.Status == pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		newExecuted := pbu.ToGoDecimal(update.ExecutedQty)
+		oldExecuted := slot.OrderFilledQtyDec
+		if newExecuted.LessThanOrEqual(oldExecuted) {
+			return nil // Duplicate or stale partial fill
+		}
+		slot.OrderFilledQty = update.ExecutedQty
+		slot.OrderFilledQtyDec = newExecuted
+		return nil
+	}
+
+	if update.Status == pb.OrderStatus_ORDER_STATUS_FILLED {
+		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
+			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
+			slot.PositionQty = update.ExecutedQty
+			slot.PositionQtyDec = pbu.ToGoDecimal(update.ExecutedQty)
+			slot.OrderFilledQtyDec = slot.PositionQtyDec
+		} else {
+			slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
+			slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+			slot.PositionQtyDec = decimal.Zero
+			slot.OrderFilledQtyDec = decimal.Zero
+		}
+		spm.resetSlotLocked(slot)
+
+		spm.notifyUpdate(&pb.PositionUpdate{
+			UpdateType: "filled",
+			Position: &pb.PositionData{
+				Symbol:   spm.symbol,
+				Quantity: slot.PositionQty,
+			},
+		})
+	} else if update.Status == pb.OrderStatus_ORDER_STATUS_CANCELED {
+		spm.resetSlotLocked(slot)
 	}
 
 	return nil
+}
+
+func (spm *SuperPositionManager) resetSlotLocked(slot *core.InventorySlot) {
+	// NOTE: spm.mu and slot.Mu MUST be held by caller.
+	// We follow the hierarchy: Manager -> Slot
+	delete(spm.orderMap, slot.OrderId)
+	if slot.ClientOid != "" {
+		delete(spm.clientOMap, slot.ClientOid)
+	}
+
+	slot.OrderId = 0
+	slot.ClientOid = ""
+	slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
+}
+
+func (spm *SuperPositionManager) GetSlots() map[string]*core.InventorySlot {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+
+	// Return a copy of the map to avoid race conditions during iteration
+	res := make(map[string]*core.InventorySlot, len(spm.slots))
+	for k, v := range spm.slots {
+		res[k] = v
+	}
+	return res
+}
+
+func (spm *SuperPositionManager) GetStrategySlots(target []core.StrategySlot) []core.StrategySlot {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+
+	if cap(target) < len(spm.slots) {
+		target = make([]core.StrategySlot, 0, len(spm.slots))
+	} else {
+		target = target[:0]
+	}
+
+	for _, s := range spm.slots {
+		s.Mu.RLock()
+		target = append(target, core.StrategySlot{
+			Price:          s.PriceDec,
+			PositionStatus: s.PositionStatus,
+			PositionQty:    s.PositionQtyDec,
+			SlotStatus:     s.SlotStatus,
+			OrderSide:      s.OrderSide,
+			OrderPrice:     s.OrderPriceDec,
+			OrderId:        s.OrderId,
+		})
+		s.Mu.RUnlock()
+	}
+	return target
+}
+
+func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
+	spm.mu.RLock()
+	defer spm.mu.RUnlock()
+
+	pbSlots := make(map[string]*pb.InventorySlot)
+	for k, v := range spm.slots {
+		v.Mu.RLock()
+		pbSlots[k] = v.InventorySlot
+		v.Mu.RUnlock()
+	}
+
+	return &pb.PositionManagerSnapshot{
+		Symbol:     spm.symbol,
+		Slots:      pbSlots,
+		TotalSlots: int64(len(spm.slots)),
+	}
+}
+
+func (spm *SuperPositionManager) SyncOrders(orders []*pb.Order, exchangePosition decimal.Decimal) {
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
+
+	result := trading.ReconcileOrders(spm.logger, spm.slots, orders, exchangePosition)
+	spm.orderMap = result.OrderMap
+	spm.clientOMap = result.ClientOMap
 }
 
 func (spm *SuperPositionManager) CancelAllBuyOrders(ctx context.Context) ([]*pb.OrderAction, error) {
@@ -555,9 +490,12 @@ func (spm *SuperPositionManager) CancelAllBuyOrders(ctx context.Context) ([]*pb.
 	var actions []*pb.OrderAction
 	for _, slot := range spm.slots {
 		slot.Mu.RLock()
-		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY && slot.OrderId > 0 {
+		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY && slot.OrderId != 0 {
 			actions = append(actions, &pb.OrderAction{
-				Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, OrderId: slot.OrderId, Symbol: spm.symbol, Price: slot.Price,
+				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL,
+				OrderId: slot.OrderId,
+				Symbol:  spm.symbol,
+				Price:   slot.Price,
 			})
 		}
 		slot.Mu.RUnlock()
@@ -572,9 +510,12 @@ func (spm *SuperPositionManager) CancelAllSellOrders(ctx context.Context) ([]*pb
 	var actions []*pb.OrderAction
 	for _, slot := range spm.slots {
 		slot.Mu.RLock()
-		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_SELL && slot.OrderId > 0 {
+		if slot.OrderSide == pb.OrderSide_ORDER_SIDE_SELL && slot.OrderId != 0 {
 			actions = append(actions, &pb.OrderAction{
-				Type: pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL, OrderId: slot.OrderId, Symbol: spm.symbol, Price: slot.Price,
+				Type:    pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL,
+				OrderId: slot.OrderId,
+				Symbol:  spm.symbol,
+				Price:   slot.Price,
 			})
 		}
 		slot.Mu.RUnlock()
@@ -582,74 +523,10 @@ func (spm *SuperPositionManager) CancelAllSellOrders(ctx context.Context) ([]*pb
 	return actions, nil
 }
 
-func (spm *SuperPositionManager) GetSlots() map[string]*core.InventorySlot {
-	spm.mu.RLock()
-	defer spm.mu.RUnlock()
-	result := make(map[string]*core.InventorySlot)
-	for k, v := range spm.slots {
-		result[k] = v
-	}
-	return result
-}
-
 func (spm *SuperPositionManager) GetSlotCount() int {
-	return int(atomic.LoadInt64(&spm.totalSlots))
-}
-
-func (spm *SuperPositionManager) GetSnapshot() *pb.PositionManagerSnapshot {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-
-	slots := make(map[string]*pb.InventorySlot)
-	for k, v := range spm.slots {
-		// Deep copy the slot to avoid data races
-		v.Mu.RLock()
-		// Manual copy to avoid copying lock
-		s := &pb.InventorySlot{
-			Price:             v.InventorySlot.Price,
-			PositionStatus:    v.InventorySlot.PositionStatus,
-			PositionQty:       v.InventorySlot.PositionQty,
-			OrderId:           v.InventorySlot.OrderId,
-			ClientOid:         v.InventorySlot.ClientOid,
-			OrderSide:         v.InventorySlot.OrderSide,
-			OrderStatus:       v.InventorySlot.OrderStatus,
-			OrderPrice:        v.InventorySlot.OrderPrice,
-			OrderFilledQty:    v.InventorySlot.OrderFilledQty,
-			SlotStatus:        v.InventorySlot.SlotStatus,
-			PostOnlyFailCount: v.InventorySlot.PostOnlyFailCount,
-		}
-		v.Mu.RUnlock()
-		slots[k] = s
-	}
-
-	return &pb.PositionManagerSnapshot{
-		Symbol:         spm.symbol,
-		Slots:          slots,
-		AnchorPrice:    pbu.FromGoDecimal(spm.anchorPrice),
-		TotalSlots:     atomic.LoadInt64(&spm.totalSlots),
-		ActiveSlots:    atomic.LoadInt64(&spm.activeSlots),
-		MarginLocked:   spm.isMarginLocked(),
-		LastUpdateTime: time.Now().UnixNano(),
-	}
-}
-
-func (spm *SuperPositionManager) CreateReconciliationSnapshot() map[string]*core.InventorySlot {
-	spm.mu.RLock()
-	defer spm.mu.RUnlock()
-
-	snapshot := make(map[string]*core.InventorySlot, len(spm.slots))
-	for k, v := range spm.slots {
-		v.Mu.RLock()
-		// Deep copy the protobuf data using proto.Clone to avoid copying locks
-		pbCopy := proto.Clone(v.InventorySlot).(*pb.InventorySlot)
-		v.Mu.RUnlock()
-
-		snapshot[k] = &core.InventorySlot{
-			InventorySlot: pbCopy,
-		}
-	}
-
-	return snapshot
+	return len(spm.slots)
 }
 
 func (spm *SuperPositionManager) UpdateOrderIndex(orderID int64, clientOID string, slot *core.InventorySlot) {
@@ -663,366 +540,71 @@ func (spm *SuperPositionManager) UpdateOrderIndex(orderID int64, clientOID strin
 	}
 }
 
-// getOrCreateSlotLocked retrieves or creates a slot (caller must hold spm.mu)
-func (spm *SuperPositionManager) getOrCreateSlotLocked(price decimal.Decimal) *core.InventorySlot {
-	roundedPrice := tradingutils.RoundPrice(price, spm.priceDecimals)
-	key := roundedPrice.String()
+func (spm *SuperPositionManager) MarkSlotsPending(actions []*pb.OrderAction) {
+	spm.mu.Lock()
+	defer spm.mu.Unlock()
 
-	if slot, exists := spm.slots[key]; exists {
-		return slot
-	}
+	for _, action := range actions {
+		priceVal := pbu.ToGoDecimal(action.Price)
+		slot := spm.getOrCreateSlotLocked(priceVal)
 
-	slot := &core.InventorySlot{
-		InventorySlot: &pb.InventorySlot{
-			Price:          pbu.FromGoDecimal(roundedPrice),
-			PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
-			PositionQty:    pbu.FromGoDecimal(decimal.Zero),
-			OrderStatus:    pb.OrderStatus_ORDER_STATUS_NEW,
-			SlotStatus:     pb.SlotStatus_SLOT_STATUS_FREE,
-			OrderSide:      pb.OrderSide_ORDER_SIDE_UNSPECIFIED,
-		},
-	}
-	spm.slots[key] = slot
-	atomic.AddInt64(&spm.totalSlots, 1)
-	return slot
-}
-
-func (spm *SuperPositionManager) handleOrderFilledLocked(slot *core.InventorySlot, update *pb.OrderUpdate) {
-	// IDEMPOTENCY CHECK #1: Check if slot is already in filled state with matching quantity
-	// This handles the case where the same fill update is received multiple times
-	if slot.OrderId == 0 &&
-		slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE &&
-		pbu.ToGoDecimal(slot.OrderFilledQty).Equal(pbu.ToGoDecimal(update.ExecutedQty)) {
-		// Slot already processed this fill - check position status matches expected state
-		expectedPosStatus := pb.PositionStatus_POSITION_STATUS_FILLED
-		if update.Side == pb.OrderSide_ORDER_SIDE_SELL {
-			expectedPosStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
-		}
-
-		if slot.PositionStatus == expectedPosStatus {
-			spm.logger.Debug("Duplicate fill update ignored (slot already processed)",
-				"order_id", update.OrderId,
-				"qty", pbu.ToGoDecimal(update.ExecutedQty).String(),
-				"side", update.Side.String())
-			return
-		}
-	}
-
-	// IDEMPOTENCY CHECK #2: Check global processed updates map
-	// This catches duplicates even if slot state was modified between updates
-	updateKey := fmt.Sprintf("%d-%s", update.OrderId, update.Status)
-	spm.updateMu.Lock()
-	if lastSeen, exists := spm.processedUpdates[updateKey]; exists {
-		if time.Since(lastSeen) < 5*time.Minute {
-			spm.updateMu.Unlock()
-			spm.logger.Warn("Duplicate update detected via global tracking",
-				"order_id", update.OrderId,
-				"status", update.Status.String(),
-				"last_seen", lastSeen,
-				"age_seconds", time.Since(lastSeen).Seconds())
-			return
-		}
-	}
-	spm.processedUpdates[updateKey] = time.Now()
-	spm.updateMu.Unlock()
-
-	// Proceed with normal fill processing
-	delete(spm.orderMap, update.OrderId)
-	if update.ClientOrderId != "" {
-		delete(spm.clientOMap, update.ClientOrderId)
-	}
-	if slot.OrderSide == pb.OrderSide_ORDER_SIDE_BUY {
-		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
-		slot.PositionQty = update.ExecutedQty
-		slot.OrderFilledQty = update.ExecutedQty
-	} else {
-		slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
-		slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
-		slot.OrderFilledQty = update.ExecutedQty
-	}
-	slot.OrderId = 0
-	slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
-	slot.OrderPrice = pbu.FromGoDecimal(decimal.Zero)
-	slot.ClientOid = ""
-	slot.OrderSide = pb.OrderSide_ORDER_SIDE_UNSPECIFIED
-	slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
-	slot.PostOnlyFailCount = 0
-
-	// Update telemetry
-	telemetry.GetGlobalMetrics().OrdersFilledTotal.Add(context.Background(), 1, metric.WithAttributes(attribute.String("symbol", spm.symbol), attribute.String("side", update.Side.String())))
-	spm.updateTelemetry()
-
-	// Record Fill and History
-	spm.historyMu.Lock()
-	fill := &pb.Fill{
-		FillId:   fmt.Sprintf("%d-%d", update.OrderId, time.Now().UnixNano()),
-		OrderId:  fmt.Sprintf("%d", update.OrderId),
-		Symbol:   spm.symbol,
-		Side:     update.Side.String(),
-		Quantity: update.ExecutedQty,
-		Price:    update.Price,
-		FilledAt: time.Now().UnixNano(),
-	}
-	spm.fills = append(spm.fills, fill)
-	if len(spm.fills) > 1000 {
-		spm.fills = spm.fills[1:]
-	}
-
-	// Simple Realized PnL: In a real system, we'd have a proper FIFO/LIFO matching to calculate PnL here.
-	// For now we just track the fill.
-
-	// Take a position snapshot for history
-	snapshot := &pb.PositionSnapshotData{
-		Symbol:        spm.symbol,
-		Quantity:      slot.PositionQty,
-		EntryPrice:    slot.Price,
-		MarketPrice:   pbu.FromGoDecimal(spm.anchorPrice),
-		UnrealizedPnl: pbu.FromGoDecimal(decimal.Zero), // simplified
-		Timestamp:     time.Now().UnixNano(),
-	}
-	spm.positionHistory = append(spm.positionHistory, snapshot)
-	if len(spm.positionHistory) > 1000 {
-		spm.positionHistory = spm.positionHistory[1:]
-	}
-	spm.historyMu.Unlock()
-
-	// Notify listeners
-	spm.notifyUpdate(&pb.PositionUpdate{
-		Position: &pb.PositionData{
-			Symbol:       spm.symbol,
-			Exchange:     spm.exchangeName,
-			Quantity:     pbu.FromGoDecimal(pbu.ToGoDecimal(slot.PositionQty)),
-			CurrentPrice: pbu.FromGoDecimal(spm.anchorPrice),
-		},
-		UpdateType: "filled",
-		TriggerOrder: &pb.Order{
-			OrderId: update.OrderId,
-			Symbol:  spm.symbol,
-			Status:  update.Status,
-		},
-	})
-}
-
-func (spm *SuperPositionManager) updateTelemetry() {
-	// Calculate total position size
-	var totalPos decimal.Decimal
-	activeOrders := int64(0)
-
-	for _, slot := range spm.slots {
-		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			totalPos = totalPos.Add(pbu.ToGoDecimal(slot.PositionQty))
-		}
-		if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED || slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_PENDING {
-			activeOrders++
-		}
-	}
-
-	telemetry.GetGlobalMetrics().SetPositionSize(spm.symbol, totalPos.InexactFloat64())
-	telemetry.GetGlobalMetrics().SetActiveOrders(spm.symbol, activeOrders)
-}
-
-func (spm *SuperPositionManager) handleOrderPartialFill(slot *core.InventorySlot, update *pb.OrderUpdate) {
-	// IDEMPOTENCY CHECK: For partial fills, check if we've already seen this exact quantity
-	currentFilledQty := pbu.ToGoDecimal(slot.OrderFilledQty)
-	updateFilledQty := pbu.ToGoDecimal(update.ExecutedQty)
-
-	// If the quantity hasn't changed, this is a duplicate
-	if currentFilledQty.Equal(updateFilledQty) {
-		spm.logger.Debug("Duplicate partial fill update ignored (quantity unchanged)",
-			"order_id", update.OrderId,
-			"qty", updateFilledQty.String())
-		return
-	}
-
-	// Validate that the new quantity is greater than the current (partial fills should accumulate)
-	if updateFilledQty.LessThan(currentFilledQty) {
-		spm.logger.Warn("Invalid partial fill update: new quantity less than current",
-			"order_id", update.OrderId,
-			"current_qty", currentFilledQty.String(),
-			"update_qty", updateFilledQty.String())
-		return
-	}
-
-	slot.OrderFilledQty = update.ExecutedQty
-}
-
-func (spm *SuperPositionManager) handleOrderCanceledLocked(slot *core.InventorySlot, update *pb.OrderUpdate) {
-	// IDEMPOTENCY CHECK: If slot is already in canceled/free state, ignore duplicate
-	if slot.OrderId == 0 &&
-		slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE &&
-		slot.OrderStatus == pb.OrderStatus_ORDER_STATUS_NEW {
-		spm.logger.Debug("Duplicate cancel update ignored (slot already free)",
-			"order_id", update.OrderId)
-		return
-	}
-
-	// Global duplicate tracking
-	updateKey := fmt.Sprintf("%d-%s", update.OrderId, update.Status)
-	spm.updateMu.Lock()
-	if lastSeen, exists := spm.processedUpdates[updateKey]; exists {
-		if time.Since(lastSeen) < 5*time.Minute {
-			spm.updateMu.Unlock()
-			spm.logger.Warn("Duplicate cancel update detected via global tracking",
-				"order_id", update.OrderId,
-				"last_seen", lastSeen)
-			return
-		}
-	}
-	spm.processedUpdates[updateKey] = time.Now()
-	spm.updateMu.Unlock()
-
-	delete(spm.orderMap, update.OrderId)
-	if update.ClientOrderId != "" {
-		delete(spm.clientOMap, update.ClientOrderId)
-	}
-	slot.OrderId = 0
-	slot.OrderStatus = pb.OrderStatus_ORDER_STATUS_NEW
-	slot.OrderPrice = pbu.FromGoDecimal(decimal.Zero)
-	slot.ClientOid = ""
-	slot.OrderSide = pb.OrderSide_ORDER_SIDE_UNSPECIFIED
-	slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_FREE
-}
-
-func (spm *SuperPositionManager) handleOrderRejected(update *pb.OrderUpdate) {}
-
-func (spm *SuperPositionManager) isMarginLocked() bool {
-	return time.Now().UnixNano() < atomic.LoadInt64(&spm.marginLockUntil)
-}
-
-// cleanupProcessedUpdates periodically removes old entries from the processedUpdates map
-// to prevent unbounded memory growth. Runs in a background goroutine.
-func (spm *SuperPositionManager) cleanupProcessedUpdates() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		spm.updateMu.Lock()
-		now := time.Now()
-		removed := 0
-
-		// Remove entries older than 5 minutes
-		for key, timestamp := range spm.processedUpdates {
-			if now.Sub(timestamp) > 5*time.Minute {
-				delete(spm.processedUpdates, key)
-				removed++
+		slot.Mu.Lock()
+		if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_FREE {
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
+				if action.Request != nil {
+					slot.OrderPrice = action.Request.Price
+					slot.OrderSide = action.Request.Side
+					slot.ClientOid = action.Request.ClientOrderId
+					if slot.ClientOid != "" {
+						spm.clientOMap[slot.ClientOid] = slot
+					}
+				}
+			}
+		} else if action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_CANCEL {
+			if slot.SlotStatus == pb.SlotStatus_SLOT_STATUS_LOCKED {
+				slot.SlotStatus = pb.SlotStatus_SLOT_STATUS_PENDING
 			}
 		}
-
-		mapSize := len(spm.processedUpdates)
-		spm.updateMu.Unlock()
-
-		if removed > 0 {
-			spm.logger.Debug("Cleaned up old processed updates",
-				"removed", removed,
-				"remaining", mapSize)
-		}
+		slot.Mu.Unlock()
 	}
 }
 
-// ForceSync forces the local position state to match the exchange state
 func (spm *SuperPositionManager) ForceSync(ctx context.Context, symbol string, exchangeSize decimal.Decimal) error {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
 
-	spm.logger.Info("Force syncing position",
-		"symbol", symbol,
-		"target_size", exchangeSize)
+	spm.logger.Warn("FORCE SYNC initiated", "exchange_size", exchangeSize)
 
-	// 1. Calculate current total filled quantity
-	currentTotal := decimal.Zero
-
-	for _, slot := range spm.slots {
-		slot.Mu.Lock()
-		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-			qty := pbu.ToGoDecimal(slot.PositionQty)
-			currentTotal = currentTotal.Add(qty)
+	// 1. Calculate current local size
+	localSize := decimal.Zero
+	for _, s := range spm.slots {
+		s.Mu.RLock()
+		if s.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
+			localSize = localSize.Add(s.PositionQtyDec)
 		}
-		slot.Mu.Unlock()
+		s.Mu.RUnlock()
 	}
 
-	// 2. Determine difference
-	diff := exchangeSize.Sub(currentTotal)
-	if diff.IsZero() {
+	if localSize.Equal(exchangeSize) {
 		return nil
 	}
 
-	spm.logger.Info("Adjusting position", "difference", diff)
-
-	// 3. Adjust Slots
-	if diff.IsPositive() {
-		// We need to INCREASE position size.
-		remainingDiff := diff
-
-		for _, slot := range spm.slots {
-			if remainingDiff.LessThanOrEqual(decimal.Zero) {
-				break
-			}
-
-			slot.Mu.Lock()
-
-			// Try to find empty slots to fill
-			if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_EMPTY {
-				price := pbu.ToGoDecimal(slot.Price)
-				if price.IsZero() {
-					slot.Mu.Unlock()
-					continue
-				}
-
-				// Standard qty for this slot
-				slotQty := spm.orderQuantity.Div(price)
-
-				fillQty := slotQty
-				if remainingDiff.LessThan(slotQty) {
-					fillQty = remainingDiff
-				}
-
-				slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_FILLED
-				slot.PositionQty = pbu.FromGoDecimal(fillQty)
-				slot.OrderFilledQty = pbu.FromGoDecimal(fillQty)
-				slot.OrderSide = pb.OrderSide_ORDER_SIDE_SELL
-				slot.OrderId = 0 // Synthetic
-
-				remainingDiff = remainingDiff.Sub(fillQty)
-			}
-			slot.Mu.Unlock()
-		}
-
-		if remainingDiff.IsPositive() {
-			spm.logger.Warn("ForceSync unable to fully match target (ran out of slots)", "remaining_diff", remainingDiff)
-		}
-
-	} else {
-		// We need to DECREASE position size (diff is negative).
-		toRemove := diff.Abs()
-
-		for _, slot := range spm.slots {
-			if toRemove.LessThanOrEqual(decimal.Zero) {
-				break
-			}
-
-			slot.Mu.Lock()
-
-			if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
-				qty := pbu.ToGoDecimal(slot.PositionQty)
-
-				if qty.LessThanOrEqual(toRemove) {
-					// Fully clear this slot
-					slot.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
-					slot.PositionQty = pbu.FromGoDecimal(decimal.Zero)
-					slot.OrderFilledQty = pbu.FromGoDecimal(decimal.Zero)
-					slot.OrderSide = pb.OrderSide_ORDER_SIDE_BUY
-					toRemove = toRemove.Sub(qty)
-				} else {
-					// Partially reduce this slot
-					newQty := qty.Sub(toRemove)
-					slot.PositionQty = pbu.FromGoDecimal(newQty)
-					slot.OrderFilledQty = pbu.FromGoDecimal(newQty)
-					toRemove = decimal.Zero
-				}
-			}
-			slot.Mu.Unlock()
-		}
+	// 2. Adjust slots to match exchange size
+	// This is a destructive operation - it will reset slot states to match reality.
+	// For now, let's just use the RestoreFromExchangePosition logic.
+	// But first, clear all filled slots.
+	for _, s := range spm.slots {
+		s.Mu.Lock()
+		s.PositionStatus = pb.PositionStatus_POSITION_STATUS_EMPTY
+		s.PositionQty = pbu.FromGoDecimal(decimal.Zero)
+		s.PositionQtyDec = decimal.Zero
+		s.Mu.Unlock()
 	}
+
+	spm.mu.Unlock() // RestoreFromExchangePosition will re-lock
+	spm.RestoreFromExchangePosition(exchangeSize)
+	spm.mu.Lock()
 
 	return nil
 }
@@ -1036,42 +618,45 @@ func (spm *SuperPositionManager) OnUpdate(callback func(*pb.PositionUpdate)) {
 func (spm *SuperPositionManager) notifyUpdate(update *pb.PositionUpdate) {
 	spm.callbackMu.RLock()
 	defer spm.callbackMu.RUnlock()
-
-	for _, callback := range spm.updateCallbacks {
-		cb := callback // Capture closure
-		task := func() {
-			cb(update)
-		}
-
-		if spm.broadcastPool != nil {
-			// Submit to pool (non-blocking if configured)
-			err := spm.broadcastPool.Submit(task)
-			if err != nil {
-				spm.logger.Warn("Failed to submit position update to pool", "error", err)
-			}
-		} else {
-			// Fallback to goroutine
-			go task()
-		}
+	for _, cb := range spm.updateCallbacks {
+		go cb(update)
 	}
 }
 
 func (spm *SuperPositionManager) GetFills() []*pb.Fill {
-	spm.historyMu.RLock()
-	defer spm.historyMu.RUnlock()
-	return spm.fills
+	return nil
 }
 
 func (spm *SuperPositionManager) GetOrderHistory() []*pb.Order {
-	spm.historyMu.RLock()
-	defer spm.historyMu.RUnlock()
-	return spm.orderHistory
+	return nil
 }
 
 func (spm *SuperPositionManager) GetPositionHistory() []*pb.PositionSnapshotData {
-	spm.historyMu.RLock()
-	defer spm.historyMu.RUnlock()
-	return spm.positionHistory
+	return nil
+}
+
+func (spm *SuperPositionManager) getOrCreateSlotLocked(price decimal.Decimal) *core.InventorySlot {
+	key := price.String()
+	if s, ok := spm.slots[key]; ok {
+		return s
+	}
+
+	theoryQty := tradingutils.RoundQuantity(spm.orderQuantity.Div(price), spm.qtyDecimals)
+	s := &core.InventorySlot{
+		InventorySlot: &pb.InventorySlot{
+			Price:          pbu.FromGoDecimal(price),
+			SlotStatus:     pb.SlotStatus_SLOT_STATUS_FREE,
+			PositionStatus: pb.PositionStatus_POSITION_STATUS_EMPTY,
+			PositionQty:    pbu.FromGoDecimal(decimal.Zero),
+			OriginalQty:    pbu.FromGoDecimal(theoryQty),
+		},
+		PriceDec:       price,
+		OrderPriceDec:  decimal.Zero,
+		PositionQtyDec: decimal.Zero,
+		OriginalQtyDec: theoryQty,
+	}
+	spm.slots[key] = s
+	return s
 }
 
 func (spm *SuperPositionManager) GetRealizedPnL() decimal.Decimal {

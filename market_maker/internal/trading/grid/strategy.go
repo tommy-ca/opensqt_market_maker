@@ -1,6 +1,7 @@
 package grid
 
 import (
+	"market_maker/internal/core"
 	"market_maker/internal/pb"
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/tradingutils"
@@ -8,19 +9,9 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Slot represents the data required by the strategy logic for a single grid level
-type Slot struct {
-	Price          decimal.Decimal
-	PositionStatus pb.PositionStatus
-	PositionQty    decimal.Decimal
-	SlotStatus     pb.SlotStatus
-	OrderSide      pb.OrderSide
-	OrderPrice     decimal.Decimal
-	OrderId        int64
-}
-
 // StrategyConfig holds the parameters for the grid strategy
 type StrategyConfig struct {
+	StrategyID          string
 	Symbol              string
 	PriceInterval       decimal.Decimal
 	OrderQuantity       decimal.Decimal
@@ -41,6 +32,18 @@ type Strategy struct {
 
 func NewStrategy(cfg StrategyConfig) *Strategy {
 	return &Strategy{cfg: cfg}
+}
+
+func (s *Strategy) SetStrategyID(id string) {
+	s.cfg.StrategyID = id
+}
+
+func (s *Strategy) SetDynamicInterval(enabled bool, scale float64) {
+	s.cfg.VolatilityScale = scale
+}
+
+func (s *Strategy) SetTrendFollowing(skewFactor float64) {
+	s.cfg.InventorySkewFactor = skewFactor
 }
 
 // CalculateEffectiveInterval calculates the interval adjusted for volatility if needed
@@ -70,9 +73,16 @@ func (s *Strategy) CalculateActions(
 	atr decimal.Decimal,
 	volatilityFactor float64,
 	isRiskTriggered bool,
-	slots []Slot,
+	regime pb.MarketRegime,
+	slots []core.StrategySlot,
 ) []*pb.OrderAction {
 	interval := s.CalculateEffectiveInterval(atr)
+
+	// Adjust interval based on regime
+	if regime == pb.MarketRegime_MARKET_REGIME_HIGH_VOLATILITY {
+		interval = interval.Mul(decimal.NewFromFloat(1.5))
+	}
+
 	inventory := s.calculateInventory(slots)
 	skewedPrice := s.CalculateSkewedPrice(currentPrice, inventory)
 
@@ -93,21 +103,35 @@ func (s *Strategy) CalculateActions(
 		processedPrices[priceKey] = true
 
 		action := s.decideActionForSlot(slot, skewedPrice, interval, volatilityFactor, isRiskTriggered, activeBuyMap, activeSellMap)
+
+		// Regime Filtering
+		if action != nil && action.Type == pb.OrderActionType_ORDER_ACTION_TYPE_PLACE {
+			if regime == pb.MarketRegime_MARKET_REGIME_BEAR_TREND && action.Request.Side == pb.OrderSide_ORDER_SIDE_BUY {
+				// Don't buy in bear trend
+				continue
+			}
+			if regime == pb.MarketRegime_MARKET_REGIME_BULL_TREND && action.Request.Side == pb.OrderSide_ORDER_SIDE_SELL {
+				// Don't sell in bull trend
+				continue
+			}
+			if regime == pb.MarketRegime_MARKET_REGIME_THIN_MARKET {
+				// Don't place any orders in thin market
+				continue
+			}
+		}
+
 		if action != nil {
 			actions = append(actions, action)
 		}
 	}
 
 	// 2. Identify missing active slots (opening logic)
-	// Iterate through calculated grid levels and check if they are missing from existing slots
-
 	// Open Buys
 	for _, price := range buyPrices {
 		key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
-		if !processedPrices[key] && !isRiskTriggered {
+		if !processedPrices[key] && !isRiskTriggered && regime != pb.MarketRegime_MARKET_REGIME_BEAR_TREND && regime != pb.MarketRegime_MARKET_REGIME_THIN_MARKET {
 			safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
 			if price.LessThan(skewedPrice.Sub(safetyBuffer)) {
-				// Treat as FREE/EMPTY
 				action := s.createPlaceAction(price, pb.OrderSide_ORDER_SIDE_BUY, false, volatilityFactor)
 				if action != nil {
 					actions = append(actions, action)
@@ -119,10 +143,9 @@ func (s *Strategy) CalculateActions(
 	// Open Sells
 	for _, price := range sellPrices {
 		key := tradingutils.RoundPrice(price, s.cfg.PriceDecimals).String()
-		if !processedPrices[key] {
+		if !processedPrices[key] && regime != pb.MarketRegime_MARKET_REGIME_BULL_TREND && regime != pb.MarketRegime_MARKET_REGIME_THIN_MARKET {
 			safetyBuffer := interval.Mul(decimal.NewFromFloat(0.1))
 			if price.GreaterThan(skewedPrice.Add(safetyBuffer)) {
-				// Treat as FREE/EMPTY
 				action := s.createPlaceAction(price, pb.OrderSide_ORDER_SIDE_SELL, false, volatilityFactor)
 				if action != nil {
 					actions = append(actions, action)
@@ -134,7 +157,7 @@ func (s *Strategy) CalculateActions(
 	return actions
 }
 
-func (s *Strategy) calculateInventory(slots []Slot) decimal.Decimal {
+func (s *Strategy) calculateInventory(slots []core.StrategySlot) decimal.Decimal {
 	total := decimal.Zero
 	for _, slot := range slots {
 		if slot.PositionStatus == pb.PositionStatus_POSITION_STATUS_FILLED {
@@ -164,7 +187,7 @@ func (s *Strategy) toMap(prices []decimal.Decimal) map[string]bool {
 }
 
 func (s *Strategy) decideActionForSlot(
-	slot Slot,
+	slot core.StrategySlot,
 	currentPrice decimal.Decimal,
 	interval decimal.Decimal,
 	volatilityFactor float64,
@@ -252,7 +275,11 @@ func (s *Strategy) createPlaceAction(price decimal.Decimal, side pb.OrderSide, r
 }
 
 func (s *Strategy) generateClientOrderID(price decimal.Decimal, side pb.OrderSide) string {
-	return pbu.GenerateCompactOrderID(price, side.String(), s.cfg.PriceDecimals)
+	strategyID := s.cfg.StrategyID
+	if strategyID == "" {
+		strategyID = "G"
+	}
+	return pbu.GenerateDeterministicOrderID(s.cfg.Symbol, strategyID, price, side.String(), s.cfg.PriceDecimals)
 }
 
 func (s *Strategy) calculateDynamicQuantity(vol float64) decimal.Decimal {

@@ -132,7 +132,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 
 	// 2. Get Local State Snapshot (Safe Copy)
-	slots := r.positionManager.CreateReconciliationSnapshot()
+	slots := r.positionManager.GetSlots()
 
 	// 3. Reconcile Orders
 	r.reconcileOrders(ctx, slots, openOrders)
@@ -224,7 +224,7 @@ func (r *Reconciler) reconcileOrders(ctx context.Context, slots map[string]*core
 				Status:     pb.OrderStatus_ORDER_STATUS_CANCELED,
 				UpdateTime: time.Now().UnixMilli(),
 			}
-			r.positionManager.OnOrderUpdate(ctx, &update)
+			_ = r.positionManager.OnOrderUpdate(ctx, &update)
 		}
 	}
 

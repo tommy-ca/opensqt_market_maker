@@ -42,7 +42,14 @@ type BybitExchange struct {
 }
 
 // NewBybitExchange creates a new Bybit exchange instance
-func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BybitExchange {
+func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*BybitExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("bybit base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("bybit", cfg, logger)
 	e := &BybitExchange{
 		BaseAdapter: b,
@@ -55,7 +62,7 @@ func NewBybitExchange(cfg *config.ExchangeConfig, logger core.ILogger) *BybitExc
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
 }
 
 // SignRequest adds authentication headers to the request
@@ -934,6 +941,7 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal order message", "error", err)
 			return
 		}
 
@@ -995,7 +1003,9 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		client.Send(authMsg)
+		if err := client.Send(authMsg); err != nil {
+			e.Logger.Error("Failed to send auth message", "error", err)
+		}
 
 		// Subscribe
 		go func() {
@@ -1007,7 +1017,9 @@ func (e *BybitExchange) StartOrderStream(ctx context.Context, callback func(upda
 					"position",
 				},
 			}
-			client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send subscription message", "error", err)
+			}
 		}()
 	})
 
@@ -1046,6 +1058,7 @@ func (e *BybitExchange) StartPriceStream(ctx context.Context, symbols []string, 
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -1074,7 +1087,9 @@ func (e *BybitExchange) StartPriceStream(ctx context.Context, symbols []string, 
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -1280,6 +1295,7 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal account message", "error", err)
 			return
 		}
 
@@ -1331,7 +1347,9 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 			"op":   "auth",
 			"args": []interface{}{string(e.Config.APIKey), expires, signature},
 		}
-		client.Send(authMsg)
+		if err := client.Send(authMsg); err != nil {
+			e.Logger.Error("Failed to send auth message", "error", err)
+		}
 
 		// Subscribe
 		go func() {
@@ -1340,7 +1358,9 @@ func (e *BybitExchange) StartAccountStream(ctx context.Context, callback func(*p
 				"op":   "subscribe",
 				"args": []string{"wallet"},
 			}
-			client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send wallet subscription message", "error", err)
+			}
 		}()
 	})
 

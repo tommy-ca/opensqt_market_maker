@@ -234,9 +234,9 @@ func (c *Client) connect() error {
 	}
 
 	// Set pong handler
-	conn.SetReadDeadline(time.Now().Add(c.pongWait))
+	_ = conn.SetReadDeadline(time.Now().Add(c.pongWait))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(c.pongWait))
+		_ = conn.SetReadDeadline(time.Now().Add(c.pongWait))
 		return nil
 	})
 

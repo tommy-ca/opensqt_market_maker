@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"golang.org/x/sync/errgroup"
 )
 
 // FundingMonitor tracks funding rates across multiple exchanges
@@ -53,7 +54,12 @@ func NewFundingMonitor(exchanges map[string]core.IExchange, logger core.ILogger,
 func (m *FundingMonitor) Start(ctx context.Context) error {
 	m.logger.Info("Starting FundingMonitor")
 
+	g, ctx := errgroup.WithContext(ctx)
+
 	for name, ex := range m.exchanges {
+		name := name // Capture loop variable
+		ex := ex     // Capture loop variable
+
 		m.mu.Lock()
 		if _, ok := m.rates[name]; !ok {
 			m.rates[name] = make(map[string]*pb.FundingRate)
@@ -64,25 +70,29 @@ func (m *FundingMonitor) Start(ctx context.Context) error {
 		m.mu.Unlock()
 
 		for _, symbol := range m.symbols {
-			rate, err := ex.GetFundingRate(ctx, symbol)
-			if err != nil {
-				m.logger.Error("Failed to fetch initial funding rate", "exchange", name, "symbol", symbol, "error", err)
-				continue
-			}
+			symbol := symbol // Capture loop variable
+			g.Go(func() error {
+				rate, err := ex.GetFundingRate(ctx, symbol)
+				if err != nil {
+					m.logger.Error("Failed to fetch initial funding rate", "exchange", name, "symbol", symbol, "error", err)
+					return nil // Continue despite error
+				}
 
-			m.updateRate(name, symbol, rate)
+				m.updateRate(name, symbol, rate)
 
-			// Start stream per symbol
-			err = ex.StartFundingRateStream(ctx, symbol, func(update *pb.FundingUpdate) {
-				m.handleUpdate(update)
+				// Start stream per symbol
+				err = ex.StartFundingRateStream(ctx, symbol, func(update *pb.FundingUpdate) {
+					m.handleUpdate(update)
+				})
+				if err != nil {
+					m.logger.Error("Failed to start funding stream", "exchange", name, "symbol", symbol, "error", err)
+				}
+				return nil
 			})
-			if err != nil {
-				m.logger.Error("Failed to start funding stream", "exchange", name, "symbol", symbol, "error", err)
-			}
 		}
 	}
 
-	return nil
+	return g.Wait()
 }
 
 func (m *FundingMonitor) Stop() error {

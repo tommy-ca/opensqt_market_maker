@@ -34,7 +34,7 @@ func TestOrderCleaner_Cleanup(t *testing.T) {
 			Price:         pbu.FromGoDecimal(decimal.NewFromFloat(45000.0)),
 			ClientOrderId: fmt.Sprintf("test_%d", i),
 		}
-		exchange.PlaceOrder(context.Background(), req)
+		_, _ = exchange.PlaceOrder(context.Background(), req)
 	}
 
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestOrderCleaner_Cleanup_Strategy(t *testing.T) {
 			Price:         pbu.FromGoDecimal(decimal.NewFromFloat(price)),
 			ClientOrderId: fmt.Sprintf("order_%d", i),
 		}
-		exchange.PlaceOrder(ctx, req)
+		_, _ = exchange.PlaceOrder(ctx, req)
 	}
 
 	// Fetch orders to get assigned IDs
@@ -143,13 +143,13 @@ func TestOrderCleaner_Cleanup_Balance(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		price := float64(40000 + i*1000)
-		exchange.PlaceOrder(ctx, &pb.PlaceOrderRequest{
+		_, _ = exchange.PlaceOrder(ctx, &pb.PlaceOrderRequest{
 			Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY,
 			Price:    pbu.FromGoDecimal(decimal.NewFromFloat(price)),
 			Quantity: pbu.FromGoDecimal(decimal.NewFromFloat(1)),
 		})
 	}
-	exchange.PlaceOrder(ctx, &pb.PlaceOrderRequest{
+	_, _ = exchange.PlaceOrder(ctx, &pb.PlaceOrderRequest{
 		Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_SELL,
 		Price:    pbu.FromGoDecimal(decimal.NewFromFloat(50000)),
 		Quantity: pbu.FromGoDecimal(decimal.NewFromFloat(1)),

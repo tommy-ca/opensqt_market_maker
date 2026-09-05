@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -96,14 +95,6 @@ func (m *mockScanner) CreateConfig(symbol string, notional decimal.Decimal) (jso
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(json.RawMessage), args.Error(1)
-}
-
-type mockDBOSContext struct {
-	dbos.DBOSContext
-}
-
-func (m *mockDBOSContext) RunAsStep(ctx dbos.DBOSContext, fn dbos.StepFunc, opts ...dbos.StepOption) (any, error) {
-	return fn(context.Background())
 }
 
 func TestPortfolioController_Rebalance(t *testing.T) {

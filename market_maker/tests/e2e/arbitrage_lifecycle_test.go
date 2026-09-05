@@ -43,7 +43,7 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 	cfg.Trading.OrderQuantity = 1.0
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, &mockArbLogger{}, cfg.Trading.Symbol)
-	fundingMonitor.Start(context.Background())
+	_ = fundingMonitor.Start(context.Background())
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, &mockArbLogger{}, arbengine.EngineConfig{
 		Symbol:                    cfg.Trading.Symbol,
@@ -57,13 +57,13 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	eng.Start(ctx)
+	_ = eng.Start(ctx)
 
 	// SCENARIO 1: ENTRY
 	// Spot: 0, Perp: 0.05% -> 54% APR (> 10%)
 	spotEx.SetFundingRate("BTCUSDT", decimal.Zero)
 	perpEx.SetFundingRate("BTCUSDT", decimal.NewFromFloat(0.0005))
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	updateEntry := &pb.FundingUpdate{
 		Exchange:        "binance",
@@ -71,7 +71,7 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 		Rate:            pbu.FromGoDecimal(decimal.NewFromFloat(0.0005)),
 		NextFundingTime: time.Now().Add(1 * time.Hour).UnixMilli(),
 	}
-	eng.OnFundingUpdate(ctx, updateEntry)
+	_ = eng.OnFundingUpdate(ctx, updateEntry)
 
 	assert.Len(t, spotEx.GetOrders(), 1, "Should have 1 spot order")
 	assert.Len(t, perpEx.GetOrders(), 1, "Should have 1 perp order")
@@ -81,13 +81,14 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 	perpEx.SetPosition("BTCUSDT", decimal.NewFromInt(-1))
 
 	// Force a sync
-	eng.OnOrderUpdate(ctx, &pb.OrderUpdate{Exchange: "binance", Symbol: "BTCUSDT", Status: pb.OrderStatus_ORDER_STATUS_FILLED})
+	_ = eng.OnOrderUpdate(ctx, &pb.OrderUpdate{Exchange: "binance_spot", Symbol: "BTCUSDT", Status: pb.OrderStatus_ORDER_STATUS_FILLED})
+	_ = eng.OnOrderUpdate(ctx, &pb.OrderUpdate{Exchange: "binance", Symbol: "BTCUSDT", Status: pb.OrderStatus_ORDER_STATUS_FILLED})
 
 	// SCENARIO 2: EXIT (CONVERGENCE)
 	// 0.00001% -> ~0% APR (< 1%)
 	spotEx.SetFundingRate("BTCUSDT", decimal.Zero)
 	perpEx.SetFundingRate("BTCUSDT", decimal.NewFromFloat(0.0000001))
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	updateExit := &pb.FundingUpdate{
 		Exchange:        "binance",
@@ -95,7 +96,7 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 		Rate:            pbu.FromGoDecimal(decimal.NewFromFloat(0.0000001)),
 		NextFundingTime: time.Now().Add(2 * time.Hour).UnixMilli(), // Different interval to allow action
 	}
-	eng.OnFundingUpdate(ctx, updateExit)
+	_ = eng.OnFundingUpdate(ctx, updateExit)
 
 	assert.Len(t, spotEx.GetOrders(), 2, "Should have 2 spot orders total")
 	assert.Len(t, perpEx.GetOrders(), 2, "Should have 2 perp orders total")
@@ -104,7 +105,7 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 	// Reset positions for new scenario
 	spotEx.SetPosition("BTCUSDT", decimal.NewFromInt(1))
 	perpEx.SetPosition("BTCUSDT", decimal.NewFromInt(-1))
-	eng.OnOrderUpdate(ctx, &pb.OrderUpdate{Exchange: "binance", Symbol: "BTCUSDT", Status: pb.OrderStatus_ORDER_STATUS_FILLED})
+	_ = eng.OnOrderUpdate(ctx, &pb.OrderUpdate{Exchange: "binance", Symbol: "BTCUSDT", Status: pb.OrderStatus_ORDER_STATUS_FILLED})
 
 	// Price is 100, Liq is 105 (Short) -> Distance 5% (< 10% threshold)
 	liqPos := &pb.Position{
@@ -113,7 +114,7 @@ func TestE2E_ArbitrageLifecycle(t *testing.T) {
 		MarkPrice:        pbu.FromGoDecimal(decimal.NewFromInt(100)),
 		LiquidationPrice: pbu.FromGoDecimal(decimal.NewFromInt(105)),
 	}
-	eng.OnPositionUpdate(ctx, liqPos)
+	_ = eng.OnPositionUpdate(ctx, liqPos)
 
 	// Expect total 3 orders per exchange
 	assert.Len(t, spotEx.GetOrders(), 3)

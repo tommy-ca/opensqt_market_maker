@@ -2,7 +2,9 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from opensqt.market_maker.v1 import risk_pb2 as opensqt_dot_market__maker_dot_v1_dot_risk__pb2
+from opensqt.market_maker.v1 import (
+    risk_pb2 as opensqt_dot_market__maker_dot_v1_dot_risk__pb2,
+)
 
 
 class RiskServiceStub(object):
@@ -15,207 +17,265 @@ class RiskServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GetRiskMetrics = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/GetRiskMetrics',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/GetRiskMetrics",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsResponse.FromString,
+            _registered_method=True,
+        )
         self.GetPositionLimits = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/GetPositionLimits',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/GetPositionLimits",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsResponse.FromString,
+            _registered_method=True,
+        )
         self.UpdatePositionLimits = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/UpdatePositionLimits',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/UpdatePositionLimits",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsResponse.FromString,
+            _registered_method=True,
+        )
         self.GetExposure = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/GetExposure',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/GetExposure",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureResponse.FromString,
+            _registered_method=True,
+        )
+        self.GetRegime = channel.unary_unary(
+            "/opensqt.market_maker.v1.RiskService/GetRegime",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeResponse.FromString,
+            _registered_method=True,
+        )
         self.SubscribeRiskAlerts = channel.unary_stream(
-                '/opensqt.market_maker.v1.RiskService/SubscribeRiskAlerts',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SubscribeRiskAlertsRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.RiskAlert.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/SubscribeRiskAlerts",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SubscribeRiskAlertsRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.RiskAlert.FromString,
+            _registered_method=True,
+        )
         self.TriggerReconciliation = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/TriggerReconciliation',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/TriggerReconciliation",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationResponse.FromString,
+            _registered_method=True,
+        )
         self.GetReconciliationStatus = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/GetReconciliationStatus',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/GetReconciliationStatus",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusResponse.FromString,
+            _registered_method=True,
+        )
         self.GetCircuitBreakerStatus = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/GetCircuitBreakerStatus',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/GetCircuitBreakerStatus",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusResponse.FromString,
+            _registered_method=True,
+        )
         self.OpenCircuitBreaker = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/OpenCircuitBreaker',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/OpenCircuitBreaker",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerResponse.FromString,
+            _registered_method=True,
+        )
         self.CloseCircuitBreaker = channel.unary_unary(
-                '/opensqt.market_maker.v1.RiskService/CloseCircuitBreaker',
-                request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerRequest.SerializeToString,
-                response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerResponse.FromString,
-                _registered_method=True)
+            "/opensqt.market_maker.v1.RiskService/CloseCircuitBreaker",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerResponse.FromString,
+            _registered_method=True,
+        )
+        self.SetStrategyID = channel.unary_unary(
+            "/opensqt.market_maker.v1.RiskService/SetStrategyID",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDResponse.FromString,
+            _registered_method=True,
+        )
+        self.UpdateFromIndicators = channel.unary_unary(
+            "/opensqt.market_maker.v1.RiskService/UpdateFromIndicators",
+            request_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsRequest.SerializeToString,
+            response_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsResponse.FromString,
+            _registered_method=True,
+        )
 
 
 class RiskServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def GetRiskMetrics(self, request, context):
-        """Query risk metrics
-        """
+        """Query risk metrics"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def GetPositionLimits(self, request, context):
-        """Query position limits
-        """
+        """Query position limits"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def UpdatePositionLimits(self, request, context):
-        """Update position limits (admin only)
-        """
+        """Update position limits (admin only)"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def GetExposure(self, request, context):
-        """Get current exposure
-        """
+        """Get current exposure"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def GetRegime(self, request, context):
+        """Get current market regime"""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def SubscribeRiskAlerts(self, request, context):
-        """Subscribe to risk alerts (streaming)
-        """
+        """Subscribe to risk alerts (streaming)"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def TriggerReconciliation(self, request, context):
-        """Trigger manual reconciliation
-        """
+        """Trigger manual reconciliation"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def GetReconciliationStatus(self, request, context):
-        """Get reconciliation status
-        """
+        """Get reconciliation status"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def GetCircuitBreakerStatus(self, request, context):
-        """Circuit breaker control
-        """
+        """Circuit breaker control"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def OpenCircuitBreaker(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
     def CloseCircuitBreaker(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def SetStrategyID(self, request, context):
+        """Set strategy ID"""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def UpdateFromIndicators(self, request, context):
+        """Update regime from external indicators"""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
 
 def add_RiskServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetRiskMetrics': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetRiskMetrics,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsResponse.SerializeToString,
-            ),
-            'GetPositionLimits': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetPositionLimits,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsResponse.SerializeToString,
-            ),
-            'UpdatePositionLimits': grpc.unary_unary_rpc_method_handler(
-                    servicer.UpdatePositionLimits,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsResponse.SerializeToString,
-            ),
-            'GetExposure': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetExposure,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureResponse.SerializeToString,
-            ),
-            'SubscribeRiskAlerts': grpc.unary_stream_rpc_method_handler(
-                    servicer.SubscribeRiskAlerts,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SubscribeRiskAlertsRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.RiskAlert.SerializeToString,
-            ),
-            'TriggerReconciliation': grpc.unary_unary_rpc_method_handler(
-                    servicer.TriggerReconciliation,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationResponse.SerializeToString,
-            ),
-            'GetReconciliationStatus': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetReconciliationStatus,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusResponse.SerializeToString,
-            ),
-            'GetCircuitBreakerStatus': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetCircuitBreakerStatus,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusResponse.SerializeToString,
-            ),
-            'OpenCircuitBreaker': grpc.unary_unary_rpc_method_handler(
-                    servicer.OpenCircuitBreaker,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerResponse.SerializeToString,
-            ),
-            'CloseCircuitBreaker': grpc.unary_unary_rpc_method_handler(
-                    servicer.CloseCircuitBreaker,
-                    request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerRequest.FromString,
-                    response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerResponse.SerializeToString,
-            ),
+        "GetRiskMetrics": grpc.unary_unary_rpc_method_handler(
+            servicer.GetRiskMetrics,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsResponse.SerializeToString,
+        ),
+        "GetPositionLimits": grpc.unary_unary_rpc_method_handler(
+            servicer.GetPositionLimits,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsResponse.SerializeToString,
+        ),
+        "UpdatePositionLimits": grpc.unary_unary_rpc_method_handler(
+            servicer.UpdatePositionLimits,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsResponse.SerializeToString,
+        ),
+        "GetExposure": grpc.unary_unary_rpc_method_handler(
+            servicer.GetExposure,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureResponse.SerializeToString,
+        ),
+        "GetRegime": grpc.unary_unary_rpc_method_handler(
+            servicer.GetRegime,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeResponse.SerializeToString,
+        ),
+        "SubscribeRiskAlerts": grpc.unary_stream_rpc_method_handler(
+            servicer.SubscribeRiskAlerts,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SubscribeRiskAlertsRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.RiskAlert.SerializeToString,
+        ),
+        "TriggerReconciliation": grpc.unary_unary_rpc_method_handler(
+            servicer.TriggerReconciliation,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationResponse.SerializeToString,
+        ),
+        "GetReconciliationStatus": grpc.unary_unary_rpc_method_handler(
+            servicer.GetReconciliationStatus,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusResponse.SerializeToString,
+        ),
+        "GetCircuitBreakerStatus": grpc.unary_unary_rpc_method_handler(
+            servicer.GetCircuitBreakerStatus,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusResponse.SerializeToString,
+        ),
+        "OpenCircuitBreaker": grpc.unary_unary_rpc_method_handler(
+            servicer.OpenCircuitBreaker,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerResponse.SerializeToString,
+        ),
+        "CloseCircuitBreaker": grpc.unary_unary_rpc_method_handler(
+            servicer.CloseCircuitBreaker,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerResponse.SerializeToString,
+        ),
+        "SetStrategyID": grpc.unary_unary_rpc_method_handler(
+            servicer.SetStrategyID,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDResponse.SerializeToString,
+        ),
+        "UpdateFromIndicators": grpc.unary_unary_rpc_method_handler(
+            servicer.UpdateFromIndicators,
+            request_deserializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsRequest.FromString,
+            response_serializer=opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsResponse.SerializeToString,
+        ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'opensqt.market_maker.v1.RiskService', rpc_method_handlers)
+        "opensqt.market_maker.v1.RiskService", rpc_method_handlers
+    )
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('opensqt.market_maker.v1.RiskService', rpc_method_handlers)
+    server.add_registered_method_handlers(
+        "opensqt.market_maker.v1.RiskService", rpc_method_handlers
+    )
 
 
- # This class is part of an EXPERIMENTAL API.
+# This class is part of an EXPERIMENTAL API.
 class RiskService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def GetRiskMetrics(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def GetRiskMetrics(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/GetRiskMetrics',
+            "/opensqt.market_maker.v1.RiskService/GetRiskMetrics",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRiskMetricsResponse.FromString,
             options,
@@ -226,23 +286,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def GetPositionLimits(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def GetPositionLimits(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/GetPositionLimits',
+            "/opensqt.market_maker.v1.RiskService/GetPositionLimits",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetPositionLimitsResponse.FromString,
             options,
@@ -253,23 +316,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def UpdatePositionLimits(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def UpdatePositionLimits(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/UpdatePositionLimits',
+            "/opensqt.market_maker.v1.RiskService/UpdatePositionLimits",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdatePositionLimitsResponse.FromString,
             options,
@@ -280,23 +346,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def GetExposure(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def GetExposure(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/GetExposure',
+            "/opensqt.market_maker.v1.RiskService/GetExposure",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetExposureResponse.FromString,
             options,
@@ -307,23 +376,56 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def SubscribeRiskAlerts(request,
+    def GetRegime(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
             target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+            "/opensqt.market_maker.v1.RiskService/GetRegime",
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeRequest.SerializeToString,
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetRegimeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def SubscribeRiskAlerts(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/SubscribeRiskAlerts',
+            "/opensqt.market_maker.v1.RiskService/SubscribeRiskAlerts",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SubscribeRiskAlertsRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.RiskAlert.FromString,
             options,
@@ -334,23 +436,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def TriggerReconciliation(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def TriggerReconciliation(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/TriggerReconciliation',
+            "/opensqt.market_maker.v1.RiskService/TriggerReconciliation",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.TriggerReconciliationResponse.FromString,
             options,
@@ -361,23 +466,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def GetReconciliationStatus(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def GetReconciliationStatus(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/GetReconciliationStatus',
+            "/opensqt.market_maker.v1.RiskService/GetReconciliationStatus",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetReconciliationStatusResponse.FromString,
             options,
@@ -388,23 +496,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def GetCircuitBreakerStatus(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def GetCircuitBreakerStatus(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/GetCircuitBreakerStatus',
+            "/opensqt.market_maker.v1.RiskService/GetCircuitBreakerStatus",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.GetCircuitBreakerStatusResponse.FromString,
             options,
@@ -415,23 +526,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def OpenCircuitBreaker(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def OpenCircuitBreaker(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/OpenCircuitBreaker',
+            "/opensqt.market_maker.v1.RiskService/OpenCircuitBreaker",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.OpenCircuitBreakerResponse.FromString,
             options,
@@ -442,23 +556,26 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
 
     @staticmethod
-    def CloseCircuitBreaker(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
+    def CloseCircuitBreaker(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/opensqt.market_maker.v1.RiskService/CloseCircuitBreaker',
+            "/opensqt.market_maker.v1.RiskService/CloseCircuitBreaker",
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerRequest.SerializeToString,
             opensqt_dot_market__maker_dot_v1_dot_risk__pb2.CloseCircuitBreakerResponse.FromString,
             options,
@@ -469,4 +586,65 @@ class RiskService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True)
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def SetStrategyID(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/opensqt.market_maker.v1.RiskService/SetStrategyID",
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDRequest.SerializeToString,
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.SetStrategyIDResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def UpdateFromIndicators(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/opensqt.market_maker.v1.RiskService/UpdateFromIndicators",
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsRequest.SerializeToString,
+            opensqt_dot_market__maker_dot_v1_dot_risk__pb2.UpdateFromIndicatorsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )

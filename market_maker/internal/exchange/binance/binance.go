@@ -19,8 +19,8 @@ import (
 	"market_maker/pkg/pbu"
 	"market_maker/pkg/retry"
 	"net/http"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -62,12 +62,18 @@ func (e *BinanceExchange) SignRequest(req *http.Request, body []byte) error {
 type BinanceExchange struct {
 	*base.BaseAdapter
 	symbolInfo map[string]*pb.SymbolInfo
-	mu         sync.RWMutex
 	pool       *concurrency.WorkerPool
 }
 
 // NewBinanceExchange creates a new Binance exchange instance
-func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) *BinanceExchange {
+func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *concurrency.WorkerPool) (*BinanceExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("binance base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("binance", cfg, logger)
 	e := &BinanceExchange{
 		BaseAdapter: b,
@@ -79,7 +85,16 @@ func NewBinanceExchange(cfg *config.ExchangeConfig, logger core.ILogger, pool *c
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
+}
+
+func sanitizeBody(body []byte) string {
+	const maxLen = 1024
+	s := string(body)
+	if len(s) > maxLen {
+		return s[:maxLen] + "...(truncated)"
+	}
+	return s
 }
 
 func (e *BinanceExchange) parseError(body []byte) error {
@@ -88,7 +103,7 @@ func (e *BinanceExchange) parseError(body []byte) error {
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("binance error (unmarshal failed): %s", string(body))
+		return fmt.Errorf("binance error (unmarshal failed): %s", sanitizeBody(body))
 	}
 
 	// Map Binance error codes to standard errors
@@ -411,7 +426,7 @@ func (e *BinanceExchange) StartFundingRateStream(ctx context.Context, symbol str
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(&update) })
+			_ = e.pool.Submit(func() { callback(&update) })
 		} else {
 			callback(&update)
 		}
@@ -428,7 +443,14 @@ func (e *BinanceExchange) IsUnifiedMargin() bool {
 }
 
 func (e *BinanceExchange) CheckHealth(ctx context.Context) error {
-	return nil
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	url := fmt.Sprintf("%s/fapi/v1/ping", baseURL)
+	_, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	return err
 }
 
 // PlaceOrder places a new order on Binance
@@ -672,7 +694,7 @@ func (e *BinanceExchange) batchPlaceOrdersInternal(ctx context.Context, baseURL,
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		e.Logger.Error("Batch order request failed", "status", resp.StatusCode, "body", string(body))
+		e.Logger.Error("Batch order request failed", "status", resp.StatusCode, "body", sanitizeBody(body))
 		return nil, false
 	}
 
@@ -888,7 +910,13 @@ func (e *BinanceExchange) GetOrder(ctx context.Context, symbol string, orderID i
 		baseURL = defaultFuturesURL
 	}
 
-	url := fmt.Sprintf("%s/fapi/v1/order?symbol=%s", baseURL, symbol)
+	isPapi := e.IsUnifiedMargin()
+	endpoint := "/fapi/v1/order"
+	if isPapi {
+		endpoint = "/papi/v1/order"
+	}
+
+	url := fmt.Sprintf("%s%s?symbol=%s", baseURL, endpoint, symbol)
 	if orderID != 0 {
 		url += fmt.Sprintf("&orderId=%d", orderID)
 	} else if clientOrderID != "" {
@@ -918,17 +946,7 @@ func (e *BinanceExchange) GetOrder(ctx context.Context, symbol string, orderID i
 		return nil, err
 	}
 
-	var status pb.OrderStatus
-	switch raw.Status {
-	case "NEW":
-		status = pb.OrderStatus_ORDER_STATUS_NEW
-	case "PARTIALLY_FILLED":
-		status = pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED
-	case "FILLED":
-		status = pb.OrderStatus_ORDER_STATUS_FILLED
-	case "CANCELED":
-		status = pb.OrderStatus_ORDER_STATUS_CANCELED
-	}
+	status := e.mapOrderStatus(raw.Status)
 
 	var side pb.OrderSide
 	if raw.Side == "BUY" {
@@ -965,7 +983,84 @@ func (e *BinanceExchange) GetOrder(ctx context.Context, symbol string, orderID i
 }
 
 func (e *BinanceExchange) GetOpenOrders(ctx context.Context, symbol string, useMargin bool) ([]*pb.Order, error) {
-	return nil, nil
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	isPapi := e.IsUnifiedMargin()
+	endpoint := "/fapi/v1/openOrders"
+	if isPapi {
+		endpoint = "/papi/v1/openOrders"
+	}
+
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
+	if symbol != "" {
+		url += fmt.Sprintf("?symbol=%s", symbol)
+	}
+
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawOrders []struct {
+		OrderID       int64  `json:"orderId"`
+		ClientOrderID string `json:"clientOrderId"`
+		Symbol        string `json:"symbol"`
+		Status        string `json:"status"`
+		Price         string `json:"price"`
+		OrigQty       string `json:"origQty"`
+		ExecutedQty   string `json:"executedQty"`
+		AvgPrice      string `json:"avgPrice"`
+		Side          string `json:"side"`
+		Type          string `json:"type"`
+		UpdateTime    int64  `json:"updateTime"`
+	}
+
+	if err := json.Unmarshal(body, &rawOrders); err != nil {
+		return nil, err
+	}
+
+	orders := make([]*pb.Order, 0, len(rawOrders))
+	for _, raw := range rawOrders {
+		status := e.mapOrderStatus(raw.Status)
+
+		var side pb.OrderSide
+		if raw.Side == "BUY" {
+			side = pb.OrderSide_ORDER_SIDE_BUY
+		} else {
+			side = pb.OrderSide_ORDER_SIDE_SELL
+		}
+
+		var orderType pb.OrderType
+		if raw.Type == "LIMIT" {
+			orderType = pb.OrderType_ORDER_TYPE_LIMIT
+		} else if raw.Type == "MARKET" {
+			orderType = pb.OrderType_ORDER_TYPE_MARKET
+		}
+
+		pVal, _ := decimal.NewFromString(raw.Price)
+		qVal, _ := decimal.NewFromString(raw.OrigQty)
+		eVal, _ := decimal.NewFromString(raw.ExecutedQty)
+		avgVal, _ := decimal.NewFromString(raw.AvgPrice)
+
+		orders = append(orders, &pb.Order{
+			OrderId:       raw.OrderID,
+			ClientOrderId: raw.ClientOrderID,
+			Symbol:        raw.Symbol,
+			Side:          side,
+			Type:          orderType,
+			Status:        status,
+			Price:         pbu.FromGoDecimal(pVal),
+			Quantity:      pbu.FromGoDecimal(qVal),
+			ExecutedQty:   pbu.FromGoDecimal(eVal),
+			AvgPrice:      pbu.FromGoDecimal(avgVal),
+			UpdateTime:    raw.UpdateTime,
+		})
+	}
+
+	return orders, nil
 }
 
 func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
@@ -993,7 +1088,12 @@ func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
 			ActualEquity       string `json:"actualEquity"`
 			AccountMaintMargin string `json:"accountMaintMargin"`
 			AccountStatus      string `json:"accountStatus"`
-			Positions          []struct {
+			Balance            []struct {
+				Asset         string `json:"asset"`
+				TotalBalance  string `json:"totalBalance"`
+				WalletBalance string `json:"walletBalance"`
+			} `json:"balance"`
+			Positions []struct {
 				Symbol           string `json:"symbol"`
 				PositionAmt      string `json:"positionAmt"`
 				EntryPrice       string `json:"entryPrice"`
@@ -1061,6 +1161,14 @@ func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
 	}
 
 	var raw struct {
+		Assets []struct {
+			Asset            string `json:"asset"`
+			WalletBalance    string `json:"walletBalance"`
+			UnrealizedProfit string `json:"unrealizedProfit"`
+			MarginBalance    string `json:"marginBalance"`
+			MaintMargin      string `json:"maintMargin"`
+			InitialMargin    string `json:"initialMargin"`
+		} `json:"assets"`
 		TotalWalletBalance string `json:"totalWalletBalance"`
 		TotalMarginBalance string `json:"totalMarginBalance"`
 		AvailableBalance   string `json:"availableBalance"`
@@ -1121,11 +1229,201 @@ func (e *BinanceExchange) GetAccount(ctx context.Context) (*pb.Account, error) {
 }
 
 func (e *BinanceExchange) GetPositions(ctx context.Context, symbol string) ([]*pb.Position, error) {
-	return nil, nil
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	isPapi := e.IsUnifiedMargin()
+	endpoint := "/fapi/v2/positionRisk"
+	if isPapi {
+		endpoint = "/papi/v1/um/positionRisk"
+	}
+
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
+	if symbol != "" {
+		url += fmt.Sprintf("?symbol=%s", symbol)
+	}
+
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawPositions []struct {
+		Symbol           string `json:"symbol"`
+		PositionAmt      string `json:"positionAmt"`
+		EntryPrice       string `json:"entryPrice"`
+		MarkPrice        string `json:"markPrice"`
+		UnRealizedProfit string `json:"unRealizedProfit"`
+		LiquidationPrice string `json:"liquidationPrice"`
+		Leverage         string `json:"leverage"`
+		MarginType       string `json:"marginType"`
+		IsolatedWallet   string `json:"isolatedWallet"`
+	}
+
+	if err := json.Unmarshal(body, &rawPositions); err != nil {
+		return nil, err
+	}
+
+	positions := make([]*pb.Position, 0)
+	for _, p := range rawPositions {
+		amt, _ := decimal.NewFromString(p.PositionAmt)
+		if amt.IsZero() && symbol == "" {
+			continue
+		}
+
+		ep, _ := decimal.NewFromString(p.EntryPrice)
+		mp, _ := decimal.NewFromString(p.MarkPrice)
+		upnl, _ := decimal.NewFromString(p.UnRealizedProfit)
+		lp, _ := decimal.NewFromString(p.LiquidationPrice)
+		lev, _ := decimal.NewFromString(p.Leverage)
+		iw, _ := decimal.NewFromString(p.IsolatedWallet)
+
+		positions = append(positions, &pb.Position{
+			Symbol:           p.Symbol,
+			Size:             pbu.FromGoDecimal(amt),
+			EntryPrice:       pbu.FromGoDecimal(ep),
+			MarkPrice:        pbu.FromGoDecimal(mp),
+			UnrealizedPnl:    pbu.FromGoDecimal(upnl),
+			LiquidationPrice: pbu.FromGoDecimal(lp),
+			Leverage:         int32(lev.IntPart()),
+			MarginType:       p.MarginType,
+			IsolatedMargin:   pbu.FromGoDecimal(iw),
+		})
+	}
+
+	return positions, nil
 }
 
 func (e *BinanceExchange) GetBalance(ctx context.Context, asset string) (decimal.Decimal, error) {
-	return decimal.Zero, nil
+	acc, err := e.GetAccount(ctx)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// For futures, we typically return the total wallet balance if no asset specified
+	if asset == "" || asset == "USDT" || asset == "BUSD" {
+		return pbu.ToGoDecimal(acc.TotalWalletBalance), nil
+	}
+
+	return decimal.Zero, fmt.Errorf("asset %s not found in account", asset)
+}
+
+func (e *BinanceExchange) GetLatestPrice(ctx context.Context, symbol string) (decimal.Decimal, error) {
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	url := fmt.Sprintf("%s/fapi/v1/ticker/price?symbol=%s", baseURL, symbol)
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	var res struct {
+		Price string `json:"price"`
+	}
+	if err := json.Unmarshal(body, &res); err != nil {
+		return decimal.Zero, err
+	}
+
+	return decimal.NewFromString(res.Price)
+}
+
+func (e *BinanceExchange) FetchExchangeInfo(ctx context.Context, symbol string) error {
+	baseURL := e.Config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultFuturesURL
+	}
+
+	url := fmt.Sprintf("%s/fapi/v1/exchangeInfo", baseURL)
+	body, err := e.ExecuteRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	var res struct {
+		Symbols []struct {
+			Symbol            string `json:"symbol"`
+			BaseAsset         string `json:"baseAsset"`
+			QuoteAsset        string `json:"quoteAsset"`
+			PricePrecision    int    `json:"pricePrecision"`
+			QuantityPrecision int    `json:"quantityPrecision"`
+			Filters           []struct {
+				FilterType  string `json:"filterType"`
+				TickSize    string `json:"tickSize"`
+				StepSize    string `json:"stepSize"`
+				MinQty      string `json:"minQty"`
+				MinNotional string `json:"notional"`
+			} `json:"filters"`
+		} `json:"symbols"`
+	}
+
+	if err := json.Unmarshal(body, &res); err != nil {
+		return err
+	}
+
+	for _, s := range res.Symbols {
+		info := &pb.SymbolInfo{
+			Symbol:            s.Symbol,
+			PricePrecision:    int32(s.PricePrecision),
+			QuantityPrecision: int32(s.QuantityPrecision),
+			BaseAsset:         s.BaseAsset,
+			QuoteAsset:        s.QuoteAsset,
+		}
+
+		for _, f := range s.Filters {
+			if f.FilterType == "PRICE_FILTER" {
+				tick, _ := decimal.NewFromString(f.TickSize)
+				info.TickSize = pbu.FromGoDecimal(tick)
+			}
+			if f.FilterType == "LOT_SIZE" {
+				step, _ := decimal.NewFromString(f.StepSize)
+				minQty, _ := decimal.NewFromString(f.MinQty)
+				info.StepSize = pbu.FromGoDecimal(step)
+				info.MinQuantity = pbu.FromGoDecimal(minQty)
+			}
+			if f.FilterType == "MIN_NOTIONAL" {
+				minNotional, _ := decimal.NewFromString(f.MinNotional)
+				info.MinNotional = pbu.FromGoDecimal(minNotional)
+			}
+		}
+		e.symbolInfo[s.Symbol] = info
+	}
+
+	return nil
+}
+
+func (e *BinanceExchange) GetSymbolInfo(ctx context.Context, symbol string) (*pb.SymbolInfo, error) {
+	if info, ok := e.symbolInfo[symbol]; ok {
+		return info, nil
+	}
+
+	if err := e.FetchExchangeInfo(ctx, symbol); err != nil {
+		return nil, err
+	}
+
+	if info, ok := e.symbolInfo[symbol]; ok {
+		return info, nil
+	}
+
+	return nil, fmt.Errorf("symbol not found: %s", symbol)
+}
+
+func (e *BinanceExchange) GetSymbols(ctx context.Context) ([]string, error) {
+	if len(e.symbolInfo) == 0 {
+		if err := e.FetchExchangeInfo(ctx, ""); err != nil {
+			return nil, err
+		}
+	}
+
+	symbols := make([]string, 0, len(e.symbolInfo))
+	for s := range e.symbolInfo {
+		symbols = append(symbols, s)
+	}
+	return symbols, nil
 }
 
 func (e *BinanceExchange) getListenKey(ctx context.Context) (string, error) {
@@ -1214,7 +1512,9 @@ func (e *BinanceExchange) StartOrderStream(ctx context.Context, callback func(up
 		var eventType string
 		if len(event.EventType) > 0 {
 			if event.EventType[0] == '"' {
-				json.Unmarshal(event.EventType, &eventType)
+				if err := json.Unmarshal(event.EventType, &eventType); err != nil {
+					e.Logger.Error("Failed to unmarshal event type", "error", err, "raw", string(event.EventType))
+				}
 			} else {
 				// If it's a number? Unlikely for EventType.
 				eventType = string(event.EventType)
@@ -1264,7 +1564,7 @@ func (e *BinanceExchange) StartOrderStream(ctx context.Context, callback func(up
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(update) })
+			_ = e.pool.Submit(func() { callback(update) })
 		} else {
 			callback(update)
 		}
@@ -1320,10 +1620,14 @@ func (e *BinanceExchange) StartPriceStream(ctx context.Context, symbols []string
 			if event.EventTime[0] == '"' {
 				// It's a string, strip quotes
 				var s string
-				json.Unmarshal(event.EventTime, &s)
-				fmt.Sscanf(s, "%d", &et)
+				if err := json.Unmarshal(event.EventTime, &s); err != nil {
+					e.Logger.Error("Failed to unmarshal event time string", "error", err, "raw", string(event.EventTime))
+				}
+				et, _ = strconv.ParseInt(s, 10, 64)
 			} else {
-				json.Unmarshal(event.EventTime, &et)
+				if err := json.Unmarshal(event.EventTime, &et); err != nil {
+					e.Logger.Error("Failed to unmarshal event time int", "error", err, "raw", string(event.EventTime))
+				}
 			}
 		}
 
@@ -1334,7 +1638,7 @@ func (e *BinanceExchange) StartPriceStream(ctx context.Context, symbols []string
 		}
 
 		if e.pool != nil {
-			e.pool.Submit(func() { callback(change) })
+			_ = e.pool.Submit(func() { callback(change) })
 		} else {
 			callback(change)
 		}
@@ -1357,104 +1661,7 @@ func (e *BinanceExchange) StartPositionStream(ctx context.Context, callback func
 	return nil
 }
 
-func (e *BinanceExchange) GetLatestPrice(ctx context.Context, symbol string) (decimal.Decimal, error) {
-	return decimal.Zero, nil
-}
-
 func (e *BinanceExchange) GetHistoricalKlines(ctx context.Context, symbol string, interval string, limit int) ([]*pb.Candle, error) {
-	return nil, nil
-}
-
-func (e *BinanceExchange) FetchExchangeInfo(ctx context.Context, symbol string) error {
-	return nil
-}
-
-func (e *BinanceExchange) GetSymbolInfo(ctx context.Context, symbol string) (*pb.SymbolInfo, error) {
-	baseURL := e.Config.BaseURL
-	if baseURL == "" {
-		baseURL = defaultFuturesURL
-	}
-
-	url := fmt.Sprintf("%s/fapi/v1/exchangeInfo", baseURL)
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := e.SignRequest(httpReq, nil); err != nil {
-		return nil, err
-	}
-
-	resp, err := e.HTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, e.parseError(body)
-	}
-
-	var res struct {
-		Symbols []struct {
-			Symbol            string `json:"symbol"`
-			BaseAsset         string `json:"baseAsset"`
-			QuoteAsset        string `json:"quoteAsset"`
-			PricePrecision    int    `json:"pricePrecision"`
-			QuantityPrecision int    `json:"quantityPrecision"`
-			Filters           []struct {
-				FilterType  string `json:"filterType"`
-				TickSize    string `json:"tickSize"`
-				StepSize    string `json:"stepSize"`
-				MinQty      string `json:"minQty"`
-				MinNotional string `json:"notional"`
-			} `json:"filters"`
-		} `json:"symbols"`
-	}
-
-	if err := json.Unmarshal(body, &res); err != nil {
-		return nil, err
-	}
-
-	for _, s := range res.Symbols {
-		if s.Symbol == symbol {
-			info := &pb.SymbolInfo{
-				Symbol:            s.Symbol,
-				PricePrecision:    int32(s.PricePrecision),
-				QuantityPrecision: int32(s.QuantityPrecision),
-				BaseAsset:         s.BaseAsset,
-				QuoteAsset:        s.QuoteAsset,
-			}
-
-			for _, f := range s.Filters {
-				if f.FilterType == "PRICE_FILTER" {
-					tick, _ := decimal.NewFromString(f.TickSize)
-					info.TickSize = pbu.FromGoDecimal(tick)
-				}
-				if f.FilterType == "LOT_SIZE" {
-					step, _ := decimal.NewFromString(f.StepSize)
-					minQty, _ := decimal.NewFromString(f.MinQty)
-					info.StepSize = pbu.FromGoDecimal(step)
-					info.MinQuantity = pbu.FromGoDecimal(minQty)
-				}
-				if f.FilterType == "MIN_NOTIONAL" {
-					minNotional, _ := decimal.NewFromString(f.MinNotional)
-					info.MinNotional = pbu.FromGoDecimal(minNotional)
-				}
-			}
-			return info, nil
-		}
-	}
-
-	return nil, fmt.Errorf("symbol not found: %s", symbol)
-}
-
-func (e *BinanceExchange) GetSymbols(ctx context.Context) ([]string, error) {
 	return nil, nil
 }
 

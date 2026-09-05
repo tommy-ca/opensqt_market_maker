@@ -29,7 +29,7 @@ func TestStartPriceStream(t *testing.T) {
 		// Send a mock bookTicker update
 		// {"e":"bookTicker","u":123,"s":"BTCUSDT","b":"45000.00","B":"10","a":"45001.00","A":"10","T":123456789,"E":123456789}
 		msg := `{"e":"bookTicker","s":"BTCUSDT","b":"45000.00","B":"10","a":"45001.00","A":"10","T":123456789,"E":123456789}`
-		c.WriteMessage(websocket.TextMessage, []byte(msg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 
 		// Keep connection open
 		time.Sleep(1 * time.Second)
@@ -52,13 +52,16 @@ func TestStartPriceStream(t *testing.T) {
 	cfg.BaseURL = server.URL
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTCUSDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	if err != nil {
@@ -86,7 +89,7 @@ func TestStartOrderStream(t *testing.T) {
 		if r.Method == "POST" && r.URL.Path == "/fapi/v1/listenKey" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"listenKey": "test_listen_key"}`))
+			_, _ = w.Write([]byte(`{"listenKey": "test_listen_key"}`))
 			return
 		}
 
@@ -138,7 +141,7 @@ func TestStartOrderStream(t *testing.T) {
 					"ss": 0
 				}
 			}`
-			c.WriteMessage(websocket.TextMessage, []byte(msg))
+			_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
 			time.Sleep(1 * time.Second)
 			return
 		}
@@ -149,13 +152,16 @@ func TestStartOrderStream(t *testing.T) {
 	// wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 	cfg := &config.ExchangeConfig{APIKey: "test", SecretKey: "test", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	if err != nil {
@@ -191,13 +197,16 @@ func TestPlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "NEW", "price": "45000.50", "origQty": "1.5", "updateTime": 123456789}`))
+		_, _ = w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "NEW", "price": "45000.50", "origQty": "1.5", "updateTime": 123456789}`))
 	}))
 	defer server.Close()
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",
@@ -240,15 +249,18 @@ func TestCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "CANCELED"}`))
+		_, _ = w.Write([]byte(`{"orderId": 12345, "symbol": "BTCUSDT", "status": "CANCELED"}`))
 	}))
 	defer server.Close()
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
-	err := exchange.CancelOrder(context.Background(), "BTCUSDT", 12345, false)
+	err = exchange.CancelOrder(context.Background(), "BTCUSDT", 12345, false)
 	if err != nil {
 		t.Fatalf("CancelOrder failed: %v", err)
 	}
@@ -262,7 +274,7 @@ func TestGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"totalWalletBalance": "10000.50",
 			"totalMarginBalance": "10000.50",
 			"availableBalance": "5000.00",
@@ -280,7 +292,10 @@ func TestGetAccount(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret", BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	acc, err := exchange.GetAccount(context.Background())
 	if err != nil {
@@ -301,10 +316,13 @@ func TestGetAccount(t *testing.T) {
 func TestSignRequest(t *testing.T) {
 	cfg := &config.ExchangeConfig{APIKey: "test_key", SecretKey: "test_secret"}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	req, _ := http.NewRequest("GET", "https://fapi.binance.com/fapi/v1/account", nil)
-	err := exchange.SignRequest(req, nil)
+	err = exchange.SignRequest(req, nil)
 	if err != nil {
 		t.Fatalf("SignRequest failed: %v", err)
 	}
@@ -329,7 +347,7 @@ func TestGetSymbolInfo(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// Minimal valid response
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"symbols": [
 				{
 					"symbol": "BTCUSDT",
@@ -353,7 +371,10 @@ func TestGetSymbolInfo(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 	ctx := context.Background()
 	symbol := "BTCUSDT"
 
@@ -395,7 +416,7 @@ func TestBatchPlaceOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{"orderId": 1001, "symbol": "BTCUSDT", "status": "NEW", "price": "45000", "origQty": "1", "executedQty": "0"},
 			{"orderId": 1002, "symbol": "BTCUSDT", "status": "NEW", "price": "45100", "origQty": "1", "executedQty": "0"}
 		]`))
@@ -404,7 +425,10 @@ func TestBatchPlaceOrders(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
 	reqs := []*pb.PlaceOrderRequest{
 		{Symbol: "BTCUSDT", Side: pb.OrderSide_ORDER_SIDE_BUY, Type: pb.OrderType_ORDER_TYPE_LIMIT, Quantity: pbu.FromGoDecimal(decimal.NewFromInt(1)), Price: pbu.FromGoDecimal(decimal.NewFromInt(45000))},
@@ -442,15 +466,18 @@ func TestBatchCancelOrders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[{"orderId": 1001, "status": "CANCELED"}, {"orderId": 1002, "status": "CANCELED"}]`))
+		_, _ = w.Write([]byte(`[{"orderId": 1001, "status": "CANCELED"}, {"orderId": 1002, "status": "CANCELED"}]`))
 	}))
 	defer server.Close()
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewBinanceExchange(cfg, logger, nil)
+	exchange, err := NewBinanceExchange(cfg, logger, nil)
+	if err != nil {
+		t.Fatalf("NewBinanceExchange failed: %v", err)
+	}
 
-	err := exchange.BatchCancelOrders(context.Background(), "BTCUSDT", []int64{1001, 1002}, false)
+	err = exchange.BatchCancelOrders(context.Background(), "BTCUSDT", []int64{1001, 1002}, false)
 	if err != nil {
 		t.Fatalf("BatchCancelOrders failed: %v", err)
 	}

@@ -74,8 +74,10 @@ func TestPriceMonitor_Subscription(t *testing.T) {
 
 	subscriber := pm.SubscribePriceChanges()
 	ctx := context.Background()
-	pm.Start(ctx)
-	defer pm.Stop()
+	_ = pm.Start(ctx)
+	defer func() {
+		_ = pm.Stop()
+	}()
 
 	price := decimal.NewFromFloat(46000.25)
 	pm.handlePriceUpdate(&pb.PriceChange{
@@ -134,8 +136,10 @@ func TestPriceMonitor_StartTwice(t *testing.T) {
 	logger := &mockLogger{}
 	pm := NewPriceMonitor(exchange, "BTCUSDT", logger)
 	ctx := context.Background()
-	pm.Start(ctx)
-	defer pm.Stop()
+	_ = pm.Start(ctx)
+	defer func() {
+		_ = pm.Stop()
+	}()
 	if pm.Start(ctx) == nil {
 		t.Error("Should have failed")
 	}

@@ -43,7 +43,7 @@ func TestE2E_ArbitrageNegativeFundingSetsSpotMarginFlag(t *testing.T) {
 	cfg.Trading.MinSpreadAPR = 0.01
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, logger, cfg.Trading.Symbol)
-	fundingMonitor.Start(context.Background())
+	_ = fundingMonitor.Start(context.Background())
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, logger, arbengine.EngineConfig{
 		Symbol:                    cfg.Trading.Symbol,
@@ -65,7 +65,7 @@ func TestE2E_ArbitrageNegativeFundingSetsSpotMarginFlag(t *testing.T) {
 
 	spot.SetFundingRate("BTCUSDT", decimal.Zero)
 	perp.SetFundingRate("BTCUSDT", decimal.NewFromFloat(-0.0005))
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	update := &pb.FundingUpdate{
 		Exchange:        "binance_perp",

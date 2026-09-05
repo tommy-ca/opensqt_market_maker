@@ -37,13 +37,14 @@ func TestBinanceMapping_AccountAndPositions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rawResponse))
+		_, _ = w.Write([]byte(rawResponse))
 	}))
 	defer server.Close()
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	acc, err := ex.GetAccount(context.Background())
 	assert.NoError(t, err)
@@ -86,13 +87,14 @@ func TestBinanceMapping_OrderUpdates(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rawOrder))
+		_, _ = w.Write([]byte(rawOrder))
 	}))
 	defer server.Close()
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	order, err := ex.GetOrder(context.Background(), "BTCUSDT", 123456, "", false)
 	assert.NoError(t, err)

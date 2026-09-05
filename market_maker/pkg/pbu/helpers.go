@@ -5,41 +5,29 @@ import (
 	"github.com/shopspring/decimal"
 	googletype "google.golang.org/genproto/googleapis/type/decimal"
 	"strings"
-	"sync"
-	"time"
 )
 
 // ToGoDecimal converts a google.type.Decimal to a shopspring decimal.Decimal.
 // ... (rest of the file)
 // ...
 
-var (
-	idMu    sync.Mutex
-	lastSec int64
-	idSeq   int
-)
-
-// GenerateCompactOrderID generates a compact ClientOrderID (< 18 chars)
-// Format: {price_int}_{side}_{timestamp}{seq}
-func GenerateCompactOrderID(price decimal.Decimal, side string, priceDecimals int) string {
-	idMu.Lock()
-	defer idMu.Unlock()
-
+// GenerateDeterministicOrderID generates a stable ClientOrderID for a given grid level.
+// It is based on (Symbol, StrategyID, Price, Side) to prevent double-fills on restart.
+func GenerateDeterministicOrderID(symbol string, strategyID string, price decimal.Decimal, side string, priceDecimals int) string {
 	priceInt := price.Mul(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals)))).Round(0).IntPart()
 
 	sideCode := "B"
-	if side == "SELL" {
+	if strings.Contains(strings.ToUpper(side), "SELL") {
 		sideCode = "S"
 	}
 
-	now := time.Now().Unix()
-	if now != lastSec {
-		lastSec = now
-		idSeq = 0
-	}
-	idSeq++
+	return fmt.Sprintf("%s_%s_%d_%s", symbol, strategyID, priceInt, sideCode)
+}
 
-	return fmt.Sprintf("%d_%s_%d%03d", priceInt, sideCode, now, idSeq)
+// GenerateCompactOrderID generates a compact ClientOrderID (< 18 chars)
+// Deprecated: Use GenerateDeterministicOrderID for grid trading.
+func GenerateCompactOrderID(symbol string, price decimal.Decimal, side string, priceDecimals int) string {
+	return GenerateDeterministicOrderID(symbol, "G", price, side, priceDecimals)
 }
 
 // AddBrokerPrefix prepends broker-specific prefixes for commission tracking
@@ -57,10 +45,19 @@ func AddBrokerPrefix(exchangeName, clientOID string) string {
 }
 
 func truncateID(id string, maxLen int) string {
-	if len(id) > maxLen {
-		return id[:maxLen]
+	if len(id) <= maxLen {
+		return id
 	}
-	return id
+
+	// Strategy: Preserve the last 16 characters (likely containing the unique price/side)
+	// and use the remaining space for the beginning of the ID (likely containing the broker prefix).
+	suffixLen := 16
+	if maxLen <= suffixLen {
+		return id[len(id)-maxLen:]
+	}
+
+	prefixLen := maxLen - suffixLen
+	return id[:prefixLen] + id[len(id)-suffixLen:]
 }
 
 // ParseCompactOrderID reconstructs price and side from a compact ClientOrderID.
@@ -74,11 +71,16 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 	}
 
 	parts := strings.Split(oid, "_")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return decimal.Zero, "", false
 	}
 
-	priceInt, err := decimal.NewFromString(parts[0])
+	// Format is {symbol}_{strategyID}_{priceInt}_{sideCode} or {strategyID}_{priceInt}_{sideCode} (legacy)
+	// We handle both by taking the last two parts for price and side.
+	pricePart := parts[len(parts)-2]
+	sidePart := parts[len(parts)-1]
+
+	priceInt, err := decimal.NewFromString(pricePart)
 	if err != nil {
 		return decimal.Zero, "", false
 	}
@@ -86,7 +88,7 @@ func ParseCompactOrderID(clientOID string, priceDecimals int) (decimal.Decimal, 
 	price := priceInt.Div(decimal.NewFromFloat(10).Pow(decimal.NewFromInt(int64(priceDecimals))))
 
 	side := "BUY"
-	if parts[1] == "S" {
+	if sidePart == "S" {
 		side = "SELL"
 	}
 

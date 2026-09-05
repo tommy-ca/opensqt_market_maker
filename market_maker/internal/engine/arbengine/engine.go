@@ -242,11 +242,17 @@ func (e *ArbitrageEngine) OnFundingUpdate(ctx context.Context, update *pb.Fundin
 	}
 
 	// 3. Reconcile
-	e.reconcile(ctx, target, update.NextFundingTime)
-
-	e.isExecuting = false
+	e.isExecuting = true
 	e.mu.Unlock()
-	return nil
+	err = e.reconcile(ctx, target, update.NextFundingTime)
+
+	e.mu.Lock()
+	e.isExecuting = false
+	if err == nil {
+		e.lastNextFundingTime = update.NextFundingTime
+	}
+	e.mu.Unlock()
+	return err
 }
 
 func (e *ArbitrageEngine) GetStatus() (*core.TargetState, error) {
@@ -262,7 +268,7 @@ func (e *ArbitrageEngine) GetStatus() (*core.TargetState, error) {
 	}, nil
 }
 
-func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetState, nextFundingTime int64) {
+func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetState, nextFundingTime int64) error {
 	// Simple Delta Reconciliation
 	spotTarget := target.Positions[0].Size
 	spotCurrent := e.legManager.GetSignedSize(e.spotExchange, e.symbol)
@@ -273,7 +279,7 @@ func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetStat
 
 	// Threshold for action (dust check)
 	if delta.Abs().LessThan(decimal.NewFromFloat(0.0001)) {
-		return
+		return nil
 	}
 
 	e.logger.Info("Reconciling", "target", spotTarget, "current", spotCurrent, "delta", delta)
@@ -291,25 +297,24 @@ func (e *ArbitrageEngine) reconcile(ctx context.Context, target *core.TargetStat
 			// Let's use the atomic entry logic for new positions
 			if spotCurrent.IsZero() {
 				// New Entry
-				e.executeEntry(ctx, true, nextFundingTime)
+				return e.executeEntry(ctx, true, nextFundingTime)
 			} else {
 				// Partial close logic (TODO: Refactor executeExit/Entry to handle quantity)
 				// For now, if we need to close, we call executeExit which closes everything
-				// This is suboptimal but safe for this refactor step
-				e.executeExit(ctx, nextFundingTime)
+				return e.executeExit(ctx, nextFundingTime)
 			}
 		} else {
 			// Increasing Long Spot -> Entry Positive
-			e.executeEntry(ctx, true, nextFundingTime)
+			return e.executeEntry(ctx, true, nextFundingTime)
 		}
 	} else {
 		// Selling Spot (Entry Negative or Exit Positive)
 		if spotCurrent.IsPositive() {
 			// Closing Long Spot -> Exit Positive
-			e.executeExit(ctx, nextFundingTime)
+			return e.executeExit(ctx, nextFundingTime)
 		} else {
 			// Increasing Short Spot -> Entry Negative
-			e.executeEntry(ctx, false, nextFundingTime)
+			return e.executeEntry(ctx, false, nextFundingTime)
 		}
 	}
 }
@@ -407,17 +412,7 @@ func (e *ArbitrageEngine) OnAccountUpdate(ctx context.Context, account *pb.Accou
 	return nil
 }
 
-func (e *ArbitrageEngine) getAggressiveLimitPrice(exchange string, side pb.OrderSide) decimal.Decimal {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	var price decimal.Decimal
-	if exchange == e.spotExchange {
-		price = e.lastSpotPrice
-	} else if exchange == e.perpExchange {
-		price = e.lastPerpPrice
-	}
-
+func (e *ArbitrageEngine) calculateAggressivePrice(price decimal.Decimal, side pb.OrderSide) decimal.Decimal {
 	if price.IsZero() {
 		return decimal.Zero
 	}
@@ -439,29 +434,32 @@ func (e *ArbitrageEngine) executePartialExit(ctx context.Context, ratio decimal.
 		return err
 	}
 
+	e.mu.Lock()
+	spotPrice := e.calculateAggressivePrice(e.lastSpotPrice, pb.OrderSide_ORDER_SIDE_SELL)
+	perpPrice := e.calculateAggressivePrice(e.lastPerpPrice, pb.OrderSide_ORDER_SIDE_BUY)
+
+	// Recalculate sides correctly based on current positions
+	spotSide := pb.OrderSide_ORDER_SIDE_SELL
+	if e.legManager.GetSide(e.spotExchange, e.symbol) == pb.OrderSide_ORDER_SIDE_SELL {
+		spotSide = pb.OrderSide_ORDER_SIDE_BUY
+		spotPrice = e.calculateAggressivePrice(e.lastSpotPrice, spotSide)
+	}
+	perpSide := pb.OrderSide_ORDER_SIDE_SELL
+	if e.legManager.GetSide(e.perpExchange, e.symbol) == pb.OrderSide_ORDER_SIDE_SELL {
+		perpSide = pb.OrderSide_ORDER_SIDE_BUY
+		perpPrice = e.calculateAggressivePrice(e.lastPerpPrice, perpSide)
+	}
+
 	// Calculate partial sizes
 	spotSize := e.legManager.GetSize(e.spotExchange, e.symbol).Mul(ratio).Abs()
 	perpSize := e.legManager.GetSize(e.perpExchange, e.symbol).Mul(ratio).Abs()
+	e.mu.Unlock()
 
 	if spotSize.IsZero() && perpSize.IsZero() {
 		return nil
 	}
 
 	e.logger.Info("Executing Partial Exit", "ratio", ratio.String(), "spotSize", spotSize.String(), "perpSize", perpSize.String())
-
-	// Determine sides
-	spotSide := pb.OrderSide_ORDER_SIDE_SELL
-	if e.legManager.GetSide(e.spotExchange, e.symbol) == pb.OrderSide_ORDER_SIDE_SELL {
-		spotSide = pb.OrderSide_ORDER_SIDE_BUY
-	}
-	perpSide := pb.OrderSide_ORDER_SIDE_SELL
-	if e.legManager.GetSide(e.perpExchange, e.symbol) == pb.OrderSide_ORDER_SIDE_SELL {
-		perpSide = pb.OrderSide_ORDER_SIDE_BUY
-	}
-
-	// Get aggressive limit prices
-	spotPrice := e.getAggressiveLimitPrice(e.spotExchange, spotSide)
-	perpPrice := e.getAggressiveLimitPrice(e.perpExchange, perpSide)
 
 	// Determine order types
 	spotType := pb.OrderType_ORDER_TYPE_LIMIT
@@ -532,6 +530,7 @@ func (e *ArbitrageEngine) executePartialExit(ctx context.Context, ratio decimal.
 			},
 		},
 	}
+
 	return e.executor.Execute(ctx, steps)
 }
 
@@ -654,9 +653,13 @@ func (e *ArbitrageEngine) executeExit(ctx context.Context, nextFundingTime int64
 		perpSide = pb.OrderSide_ORDER_SIDE_SELL
 	}
 
+	e.mu.Lock()
 	// Get aggressive limit prices
-	spotPrice := e.getAggressiveLimitPrice(e.spotExchange, spotSide)
-	perpPrice := e.getAggressiveLimitPrice(e.perpExchange, perpSide)
+	spotPrice := e.calculateAggressivePrice(e.lastSpotPrice, spotSide)
+	perpPrice := e.calculateAggressivePrice(e.lastPerpPrice, perpSide)
+
+	qty := e.orderQuantity
+	e.mu.Unlock()
 
 	// Determine order types
 	spotType := pb.OrderType_ORDER_TYPE_LIMIT
@@ -673,9 +676,6 @@ func (e *ArbitrageEngine) executeExit(ctx context.Context, nextFundingTime int64
 		ex, ok := e.exchanges[e.spotExchange]
 		if ok && ex.IsUnifiedMargin() {
 			e.logger.Info("Executing Same-Exchange Unified Exit", "exchange", e.spotExchange)
-			e.mu.Lock()
-			qty := e.orderQuantity
-			e.mu.Unlock()
 
 			reqs := []*pb.PlaceOrderRequest{
 				{
@@ -703,14 +703,7 @@ func (e *ArbitrageEngine) executeExit(ctx context.Context, nextFundingTime int64
 		}
 	}
 
-	// Case 2: Cross-exchange or non-UM
-	// Parallel Execution: Close both legs concurrently to minimize slippage
-	e.logger.Info("Executing Cross-Exchange Parallel Exit", "spot", e.spotExchange, "perp", e.perpExchange)
-
-	// Get current sizes
-	spotQty := e.legManager.GetSize(e.spotExchange, e.symbol).Abs()
-	perpQty := e.legManager.GetSize(e.perpExchange, e.symbol).Abs()
-
+	// Cross-exchange or non-UM
 	steps := []execution.Step{
 		{
 			Exchange: e.perpExchange,
@@ -719,9 +712,8 @@ func (e *ArbitrageEngine) executeExit(ctx context.Context, nextFundingTime int64
 				Side:          perpSide,
 				Type:          perpType,
 				Price:         pbu.FromGoDecimal(perpPrice),
-				Quantity:      pbu.FromGoDecimal(perpQty),
+				Quantity:      pbu.FromGoDecimal(qty),
 				ClientOrderId: e.generateClientOrderID("exit_perp", nextFundingTime),
-				ReduceOnly:    true,
 			},
 		},
 		{
@@ -731,11 +723,12 @@ func (e *ArbitrageEngine) executeExit(ctx context.Context, nextFundingTime int64
 				Side:          spotSide,
 				Type:          spotType,
 				Price:         pbu.FromGoDecimal(spotPrice),
-				Quantity:      pbu.FromGoDecimal(spotQty),
+				Quantity:      pbu.FromGoDecimal(qty),
 				ClientOrderId: e.generateClientOrderID("exit_spot", nextFundingTime),
-				UseMargin:     true, // Closing a margin position
+				UseMargin:     true,
 			},
 		},
 	}
-	return e.parallelExecutor.Execute(ctx, steps)
+
+	return e.executor.Execute(ctx, steps)
 }

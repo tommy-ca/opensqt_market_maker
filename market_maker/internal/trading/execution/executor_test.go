@@ -12,6 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sort"
 )
 
 type mockLogger struct{}
@@ -82,6 +83,9 @@ func TestSequenceExecutor_CompensationPartialFill(t *testing.T) {
 
 	// Verify spot compensation used 0.6 instead of 1.0
 	orders := spotEx.GetOrders()
+	sort.Slice(orders, func(i, j int) bool {
+		return orders[i].OrderId < orders[j].OrderId
+	})
 	// Initial Buy (1.0) + Compensation Sell (0.6)
 	require.Len(t, orders, 2)
 	assert.Equal(t, pb.OrderSide_ORDER_SIDE_BUY, orders[0].Side)

@@ -2,7 +2,6 @@ package simple
 
 import (
 	"context"
-	"fmt"
 	"market_maker/internal/pb"
 	"sync"
 )
@@ -29,8 +28,5 @@ func (s *MemoryStore) SaveState(ctx context.Context, state *pb.State) error {
 func (s *MemoryStore) LoadState(ctx context.Context) (*pb.State, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.state == nil {
-		return nil, fmt.Errorf("no state found")
-	}
 	return s.state, nil
 }

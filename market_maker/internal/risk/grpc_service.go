@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"market_maker/internal/pb"
+	"market_maker/internal/trading/monitor"
 	"market_maker/pkg/pbu"
 
 	"github.com/shopspring/decimal"
@@ -18,15 +19,51 @@ type RiskServiceServer struct {
 	monitor        *RiskMonitor
 	reconciler     *Reconciler
 	circuitBreaker *CircuitBreaker
-	mu             sync.RWMutex
+	regimeMonitor  *monitor.RegimeMonitor
+
+	mu         sync.RWMutex
+	strategyID string
 }
 
-func NewRiskServiceServer(monitor *RiskMonitor, reconciler *Reconciler, cb *CircuitBreaker) *RiskServiceServer {
+func NewRiskServiceServer(monitor *RiskMonitor, reconciler *Reconciler, cb *CircuitBreaker, rm *monitor.RegimeMonitor) *RiskServiceServer {
 	return &RiskServiceServer{
 		monitor:        monitor,
 		reconciler:     reconciler,
 		circuitBreaker: cb,
+		regimeMonitor:  rm,
 	}
+}
+
+func (s *RiskServiceServer) GetRegime(ctx context.Context, req *pb.GetRegimeRequest) (*pb.GetRegimeResponse, error) {
+	if s.regimeMonitor == nil {
+		return nil, status.Error(codes.Unavailable, "regime monitor not configured")
+	}
+	return &pb.GetRegimeResponse{
+		Regime: s.regimeMonitor.GetRegime(),
+	}, nil
+}
+
+func (s *RiskServiceServer) SetStrategyID(ctx context.Context, req *pb.SetStrategyIDRequest) (*pb.SetStrategyIDResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previousID := s.strategyID
+	s.strategyID = req.StrategyId
+
+	return &pb.SetStrategyIDResponse{
+		Success:            true,
+		PreviousStrategyId: previousID,
+	}, nil
+}
+
+func (s *RiskServiceServer) UpdateFromIndicators(ctx context.Context, req *pb.UpdateFromIndicatorsRequest) (*pb.UpdateFromIndicatorsResponse, error) {
+	if s.regimeMonitor == nil {
+		return nil, status.Error(codes.Unavailable, "regime monitor not configured")
+	}
+	s.regimeMonitor.UpdateFromIndicators(req.Rsi, req.TrendScore)
+	return &pb.UpdateFromIndicatorsResponse{
+		Success: true,
+	}, nil
 }
 
 func (s *RiskServiceServer) GetRiskMetrics(ctx context.Context, req *pb.GetRiskMetricsRequest) (*pb.GetRiskMetricsResponse, error) {

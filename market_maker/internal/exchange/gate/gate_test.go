@@ -61,7 +61,7 @@ func TestGateStartPriceStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -71,13 +71,14 @@ func TestGateStartPriceStream(t *testing.T) {
 	cfg := &config.ExchangeConfig{BaseURL: wsURL}
 
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	priceChan := make(chan *pb.PriceChange, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartPriceStream(ctx, []string{"BTC_USDT"}, func(change *pb.PriceChange) {
+	err = exchange.StartPriceStream(ctx, []string{"BTC_USDT"}, func(change *pb.PriceChange) {
 		priceChan <- change
 	})
 	require.NoError(t, err, "StartPriceStream failed")
@@ -128,7 +129,7 @@ func TestGateStartOrderStream(t *testing.T) {
 				}
 			]
 		}`
-		c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
+		_ = c.WriteMessage(websocket.TextMessage, []byte(updateMsg))
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
@@ -140,13 +141,14 @@ func TestGateStartOrderStream(t *testing.T) {
 		BaseURL:   wsURL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	orderChan := make(chan *pb.OrderUpdate, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
+	err = exchange.StartOrderStream(ctx, func(update *pb.OrderUpdate) {
 		orderChan <- update
 	})
 	require.NoError(t, err, "StartOrderStream failed")
@@ -166,7 +168,7 @@ func TestGatePlaceOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": 123456,
 			"text": "test_oid",
 			"contract": "BTC_USDT",
@@ -184,7 +186,8 @@ func TestGatePlaceOrder(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	// Pre-seed multiplier to avoid extra API call in PlaceOrder
 	exchange.quantoMultiplier["BTC_USDT"] = decimal.NewFromInt(1)
@@ -211,7 +214,7 @@ func TestGateGetAccount(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"total": "10000",
 			"available": "5000",
 			"point": "0",
@@ -226,7 +229,8 @@ func TestGateGetAccount(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	acc, err := exchange.GetAccount(context.Background())
 	require.NoError(t, err, "GetAccount failed")
@@ -242,7 +246,7 @@ func TestGateCancelOrder(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": 12345,
 			"status": "finished",
 			"finish_as": "cancelled"
@@ -256,9 +260,10 @@ func TestGateCancelOrder(t *testing.T) {
 		BaseURL:   server.URL,
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
-	err := exchange.CancelOrder(context.Background(), "BTC_USDT", 12345, false)
+	err = exchange.CancelOrder(context.Background(), "BTC_USDT", 12345, false)
 	require.NoError(t, err, "CancelOrder failed")
 }
 
@@ -269,7 +274,8 @@ func TestGateSignREST(t *testing.T) {
 		SecretKey: config.Secret(secretKey),
 	}
 	logger, _ := logging.NewZapLogger("INFO")
-	exchange := NewGateExchange(cfg, logger)
+	exchange, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 
 	timestamp := int64(123456789)
 	method := "POST"
@@ -302,7 +308,7 @@ func TestGateGetSymbolInfo(t *testing.T) {
 		assert.Equal(t, "/api/v4/futures/usdt/contracts", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{
 				"name": "BTC_USDT",
 				"order_price_round": "0.1",
@@ -314,7 +320,8 @@ func TestGateGetSymbolInfo(t *testing.T) {
 
 	cfg := &config.ExchangeConfig{BaseURL: server.URL}
 	logger, _ := logging.NewZapLogger("DEBUG")
-	ex := NewGateExchange(cfg, logger)
+	ex, err := NewGateExchange(cfg, logger)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	// Test with Gate style symbol

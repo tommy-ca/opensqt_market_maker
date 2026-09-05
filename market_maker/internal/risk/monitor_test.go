@@ -27,8 +27,10 @@ func TestRiskMonitor_AnomalyDetection(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	monitor.Start(ctx)
-	defer monitor.Stop()
+	_ = monitor.Start(ctx)
+	defer func() {
+		_ = monitor.Stop()
+	}()
 
 	// Simulate normal traffic
 	for i := 0; i < 10; i++ {
@@ -96,8 +98,10 @@ func TestRiskMonitor_UnclosedCandleDetection(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	monitor.Start(ctx)
-	defer monitor.Stop()
+	_ = monitor.Start(ctx)
+	defer func() {
+		_ = monitor.Stop()
+	}()
 
 	// Fill window
 	for i := 0; i < 6; i++ {

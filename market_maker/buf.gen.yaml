@@ -11,9 +11,9 @@ managed:
       module: buf.build/grpc/grpc
       value: google.golang.org/grpc/health/grpc_health_v1;health
 plugins:
-  - local: protoc-gen-go
+  - remote: buf.build/protocolbuffers/go
     out: ..
-  - local: protoc-gen-go-grpc
+  - remote: buf.build/grpc/go
     out: ..
   - remote: buf.build/protocolbuffers/python
     out: ../python-connector

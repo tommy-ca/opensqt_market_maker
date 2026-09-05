@@ -6,6 +6,7 @@ import (
 
 // Config holds the configuration for Grid engines
 type Config struct {
+	StrategyID          string
 	Symbol              string
 	Exchange            string
 	PriceInterval       decimal.Decimal

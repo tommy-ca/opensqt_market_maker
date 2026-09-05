@@ -31,7 +31,7 @@ func TestBinanceWorkflow_IdempotentPlaceOrder(t *testing.T) {
 		if attempt == 2 {
 			// Second attempt returns Duplicate Order ID
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"code": -2012, "msg": "Duplicate order ID."}`))
+			_, _ = w.Write([]byte(`{"code": -2012, "msg": "Duplicate order ID."}`))
 			return
 		}
 
@@ -39,7 +39,7 @@ func TestBinanceWorkflow_IdempotentPlaceOrder(t *testing.T) {
 		if r.Method == "GET" && r.URL.Path == "/fapi/v1/order" {
 			assert.Equal(t, "test_oid_123", r.URL.Query().Get("origClientOrderId"))
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"orderId": 123456, "clientOrderId": "test_oid_123", "status": "NEW", "price": "50000.00", "origQty": "1.0", "updateTime": 123456789}`))
+			_, _ = w.Write([]byte(`{"orderId": 123456, "clientOrderId": "test_oid_123", "status": "NEW", "price": "50000.00", "origQty": "1.0", "updateTime": 123456789}`))
 			return
 		}
 
@@ -49,7 +49,8 @@ func TestBinanceWorkflow_IdempotentPlaceOrder(t *testing.T) {
 
 	logger, _ := logging.NewZapLogger("INFO")
 	cfg := &config.ExchangeConfig{BaseURL: server.URL, APIKey: "test", SecretKey: "test"}
-	ex := NewBinanceExchange(cfg, logger, nil)
+	ex, err := NewBinanceExchange(cfg, logger, nil)
+	assert.NoError(t, err)
 
 	req := &pb.PlaceOrderRequest{
 		Symbol:        "BTCUSDT",

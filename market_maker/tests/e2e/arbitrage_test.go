@@ -46,7 +46,7 @@ func TestE2E_ArbitrageFlow(t *testing.T) {
 	cfg.Trading.MinSpreadAPR = 0.01 // Low for test
 
 	fundingMonitor := monitor.NewFundingMonitor(exchanges, logger, cfg.Trading.Symbol)
-	fundingMonitor.Start(context.Background())
+	_ = fundingMonitor.Start(context.Background())
 
 	eng := arbengine.NewArbitrageEngine(exchanges, nil, fundingMonitor, logger, arbengine.EngineConfig{
 		Symbol:                    cfg.Trading.Symbol,
@@ -68,7 +68,7 @@ func TestE2E_ArbitrageFlow(t *testing.T) {
 	// 3. Simulate Funding Update
 	ex1.SetFundingRate("BTCUSDT", decimal.NewFromFloat(0.0001))
 	ex2.SetFundingRate("BTCUSDT", decimal.NewFromFloat(-0.0001))
-	fundingMonitor.Start(ctx)
+	_ = fundingMonitor.Start(ctx)
 
 	update1 := &pb.FundingUpdate{
 		Exchange:        "binance",
@@ -86,8 +86,8 @@ func TestE2E_ArbitrageFlow(t *testing.T) {
 		Timestamp:       time.Now().UnixMilli(),
 	}
 
-	eng.OnFundingUpdate(ctx, update1)
-	eng.OnFundingUpdate(ctx, update2)
+	_ = eng.OnFundingUpdate(ctx, update1)
+	_ = eng.OnFundingUpdate(ctx, update2)
 
 	// 4. Trigger Opportunity Check (e.g. via Price Update or internal tick)
 	// Price update triggers the logic loop usually
@@ -95,7 +95,7 @@ func TestE2E_ArbitrageFlow(t *testing.T) {
 		Symbol: "BTCUSDT",
 		Price:  pbu.FromGoDecimal(decimal.NewFromInt(50000)),
 	}
-	eng.OnPriceUpdate(ctx, priceUpdate)
+	_ = eng.OnPriceUpdate(ctx, priceUpdate)
 
 	// 5. Verify Orders
 	// Expect Sell on Binance, Buy on Bybit

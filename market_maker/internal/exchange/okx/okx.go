@@ -43,7 +43,14 @@ type OKXExchange struct {
 }
 
 // NewOKXExchange creates a new OKX exchange instance
-func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) *OKXExchange {
+func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) (*OKXExchange, error) {
+	if cfg.BaseURL != "" && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		// Allow http for local testing
+		if !strings.Contains(cfg.BaseURL, "127.0.0.1") && !strings.Contains(cfg.BaseURL, "localhost") {
+			return nil, fmt.Errorf("okx base URL must start with https://: %s", cfg.BaseURL)
+		}
+	}
+
 	b := base.NewBaseAdapter("okx", cfg, logger)
 	e := &OKXExchange{
 		BaseAdapter: b,
@@ -56,7 +63,7 @@ func NewOKXExchange(cfg *config.ExchangeConfig, logger core.ILogger) *OKXExchang
 	b.SetParseError(e.parseError)
 	b.SetMapOrderStatus(e.mapOrderStatus)
 
-	return e
+	return e, nil
 }
 
 // SignRequest adds authentication headers to the request
@@ -1035,6 +1042,7 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal order message", "error", err)
 			return
 		}
 
@@ -1103,7 +1111,9 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 				},
 			},
 		}
-		client.Send(loginMsg)
+		if err := client.Send(loginMsg); err != nil {
+			e.Logger.Error("Failed to send login message", "error", err)
+		}
 
 		// Subscribe orders
 		go func() {
@@ -1117,7 +1127,9 @@ func (e *OKXExchange) StartOrderStream(ctx context.Context, callback func(update
 					},
 				},
 			}
-			client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send orders subscription message", "error", err)
+			}
 		}()
 	})
 
@@ -1159,6 +1171,7 @@ func (e *OKXExchange) StartPriceStream(ctx context.Context, symbols []string, ca
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal ticker message", "error", err)
 			return
 		}
 
@@ -1193,7 +1206,9 @@ func (e *OKXExchange) StartPriceStream(ctx context.Context, symbols []string, ca
 			"op":   "subscribe",
 			"args": args,
 		}
-		client.Send(sub)
+		if err := client.Send(sub); err != nil {
+			e.Logger.Error("Failed to send tickers subscription", "error", err)
+		}
 	})
 
 	go func() {
@@ -1392,6 +1407,7 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 		}
 
 		if err := json.Unmarshal(message, &event); err != nil {
+			e.Logger.Error("Failed to unmarshal account message", "error", err)
 			return
 		}
 
@@ -1455,7 +1471,9 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 				},
 			},
 		}
-		client.Send(loginMsg)
+		if err := client.Send(loginMsg); err != nil {
+			e.Logger.Error("Failed to send login message", "error", err)
+		}
 
 		// Subscribe
 		go func() {
@@ -1466,7 +1484,9 @@ func (e *OKXExchange) StartAccountStream(ctx context.Context, callback func(*pb.
 					{"channel": "account"},
 				},
 			}
-			client.Send(subMsg)
+			if err := client.Send(subMsg); err != nil {
+				e.Logger.Error("Failed to send account subscription message", "error", err)
+			}
 		}()
 	})
 

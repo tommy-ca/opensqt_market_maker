@@ -50,7 +50,7 @@ func (l *MockLogger) WithFields(fields map[string]interface{}) core.ILogger { re
 func TestReconciliationRealRace(t *testing.T) {
 	// Initialize Telemetry
 	meter := otel.GetMeterProvider().Meter("test")
-	telemetry.GetGlobalMetrics().InitMetrics(meter)
+	_ = telemetry.GetGlobalMetrics().InitMetrics(meter)
 
 	// Setup Real Position Manager
 	logger := &MockLogger{}
@@ -107,7 +107,7 @@ func TestReconciliationRealRace(t *testing.T) {
 			case <-ctx.Done():
 				return
 			default:
-				pm.OnOrderUpdate(ctx, update)
+				_ = pm.OnOrderUpdate(ctx, update)
 				time.Sleep(10 * time.Microsecond)
 			}
 		}
@@ -122,7 +122,7 @@ func TestReconciliationRealRace(t *testing.T) {
 			case <-ctx.Done():
 				return
 			default:
-				reconciler.Reconcile(ctx)
+				_ = reconciler.Reconcile(ctx)
 				time.Sleep(100 * time.Microsecond)
 			}
 		}
